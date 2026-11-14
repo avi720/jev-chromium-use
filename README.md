@@ -1,6 +1,32 @@
-# jev-chromium-use
+<p align="center">
+  <img src="docs/banner.svg" alt="jev-chromium-use: a small decision model picks every step of a browser task" width="100%">
+</p>
 
-**Browser automation where a small decision model, not a frontier LLM, picks every step.**
+<h3 align="center">A small decision model drives your browser, not a frontier LLM</h3>
+
+<p align="center">
+  <b>Your signed-in Edge</b> · <b>a background tab</b> · <b>Hebrew-ready</b> · <b>about $0.0001 a step</b>
+</p>
+
+<p align="center">
+  <img alt="Windows | Edge" src="https://img.shields.io/badge/platform-Windows%20%7C%20Edge-0078D4?logo=microsoftedge&logoColor=white">
+  <img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white">
+  <a href="https://docs.typesafe.ai"><img alt="decisions: TypeSafe Jev" src="https://img.shields.io/badge/decisions-TypeSafe%20Jev-8b5cf6"></a>
+  <img alt="visual checks: Claude" src="https://img.shields.io/badge/visual%20checks-Claude-d97757">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2ea44f"></a>
+  <img alt="status: prototype" src="https://img.shields.io/badge/status-prototype-f59e0b">
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#safety-rules">Safety rules</a> ·
+  <a href="#calibration">Calibration</a> ·
+  <a href="#compared-with-an-llm-that-reads-screenshots">Cost vs. screenshot LLMs</a> ·
+  <a href="#risks">Risks</a>
+</p>
+
+---
 
 You give a goal in plain language (Hebrew works). The loop reads the page's DOM, asks
 [TypeSafe](https://docs.typesafe.ai)'s Jev which control to click or what to type, and acts, in
@@ -34,10 +60,6 @@ cost: Jev 9363 input tokens = $0.00039
 > calibrated on 153 labeled cases and used for one QA pass on a signed-in web app (navigation,
 > sorting, form entry). That is all the real mileage it has. Read [Risks](#risks) before pointing
 > it at a site where you are logged in.
-
-**Contents:** [Quick start](#quick-start) · [How it works](#how-it-works) ·
-[Usage](#usage) · [Safety rules](#safety-rules) · [Calibration](#calibration) · [Risks](#risks) ·
-[Cost](#cost) · [Compared with a screenshot LLM](#compared-with-an-llm-that-reads-screenshots) · [Known limits](#known-limits)
 
 ## Quick start
 
