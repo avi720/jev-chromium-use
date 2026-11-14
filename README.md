@@ -98,12 +98,14 @@ jev_ext_loop.py  <── WebSocket on 127.0.0.1 ──>  Jev Loop Bridge (browse
 
 Each step:
 
-1. **Perceive.** The extension lists what a user could act on in the tab's viewport, with exact
-   labels from the DOM, plus the visible text. No screenshots and no OCR, so right-to-left text and
-   Hebrew arrive intact. Each control comes with its state: a dropdown with its options and the one
-   chosen now, a checkbox or radio as checked or not, a tab or segmented button as selected or not,
-   a text field as empty or filled. What is typed in a field is never read, only whether it holds
-   something.
+1. **Perceive.** The extension lists what a user could act on, with exact labels from the DOM,
+   plus the visible text. No screenshots and no OCR, so right-to-left text and Hebrew arrive
+   intact. Controls on screen come first, then those up to three screens above or below, marked
+   as such; Jev can pick one of those directly and the loop scrolls to it. The list reaches into
+   open shadow roots (web components) and same-origin iframes. Each control comes with its state:
+   a dropdown with its options and the one chosen now, a custom dropdown as "opens a list", a
+   checkbox or radio as checked or not, a tab or segmented button as selected or not, a text field
+   as empty or filled. What is typed in a field is never read, only whether it holds something.
 2. **Decide.** One request to Jev asks several narrow questions about the same page at once:
    | question | type | what it settles |
    |---|---|---|
@@ -128,6 +130,8 @@ same way: Jev picks one of its options.
 `--value "LABEL=TEXT"` is a fact, not a suggestion. Before Jev is asked anything, code finds the
 field or dropdown whose label matches `LABEL` (ignoring `*` and `:`) and puts `TEXT` there, even
 when the field already shows a default, such as today's date or a dropdown on its first option.
+For a custom dropdown (a button that opens a list) it opens the list and clicks the option with
+that text.
 A control that looks like it submits (see [Safety rules](#safety-rules)) is not clicked while any
 of your values has not been placed. This rule exists because an earlier version let Jev decide
 which fields to fill: it skipped two dropdowns and two prefilled date fields and submitted a trade
@@ -293,23 +297,25 @@ Result with the thresholds in use (`MIN_CONF=0.6`, `DONE_AT=0.8`, `FITS_AT=0.5`,
 
 | kind of case | n | right | stopped | not right |
 |---|---|---|---|---|
-| click a control | 118 | 110 | 0 | 8 |
+| click a control | 118 | 108 | 0 | 10 |
 | type a search | 8 | 8 | 0 | 0 |
 | goal already met | 7 | 7 | 0 | 0 |
 | nothing on the page fits | 8 | – | 8 | 0 |
 | needs eyes (visual) | 12 | 12 | 0 | 0 |
 
-- Of the 8 "not right" click cases, 7 took another reasonable route: in 4 the loop typed the goal
-  into the site's search box where a direct link existed, and in 3 it declared the goal met on a
+- Of the 10 "not right" click cases, 9 took another reasonable route: in 5 the loop typed the goal
+  into the site's search box where a direct link existed, and in 4 it declared the goal met on a
   page that arguably already showed the answer (a featured article on the home page it was asked
   to find).
 - **One wrong click**: "enter my personal area" on the National Insurance site picked "order a code
-  for the personal site" at confidence 0.61. In the previous run the same case stopped at 0.53, so
-  it sits on the line and moves between runs. The commitment rule flags that label ("הזמנת"), so
-  the loop would have asked before clicking it.
+  for the personal site", at confidence 0.53, 0.61 and 0.73 in three runs. It sits near the line
+  and moves between runs. The commitment rule flags that label ("הזמנת"), so the loop would have
+  asked before clicking it.
+- Run to run, the counts move by one or two cases: the same set gave 110 right clicks in one run
+  and 108 in the next.
 - `needs_visual` separated cleanly: the 12 visual goals scored 0.84 to 0.98, and none of the other
   141 scored as high as 0.3.
-- Between 0.3 and 0.6, `MIN_CONF` barely matters. Raising it to 0.9 stops 22 cases instead of 8
+- Between 0.3 and 0.6, `MIN_CONF` barely matters. Raising it to 0.9 stops 25 cases instead of 8
   and prevents one wrong step, so confidence alone is a weak guard.
 - What mattered was the `fits` question. Before it, a goal that had nothing to do with the page
   ("order a pizza" on a news site) got a confident click on "search" or "home", up to 0.95. With
@@ -325,11 +331,11 @@ Read these numbers with their limits:
 - The thresholds and the `fits` question were tuned on the same cases they are reported on.
   There is no held-out set, so expect somewhat worse on new sites.
 - One live run of a "nothing fits" goal scored `fits=0.44`, close to the 0.5 line.
-- The pages are signed-out home and listing pages. Carts, checkouts, inboxes and settings pages
-  are not in the set.
+- The pages are signed-out home and listing pages, saved before the loop could see controls
+  outside the viewport. Carts, checkouts, inboxes and settings pages are not in the set.
 - Each case is a single decision. Multi-step runs were tested on a handful of goals only.
-- Dropdowns, checkboxes, row context and the `--value` rule are not in the calibration set; they
-  were tested on one real app. The agent mode of the visual hand-off was tested end to end; API
+- Dropdowns, checkboxes, row context, offscreen controls, shadow DOM, iframes and the `--value`
+  rule are not in the calibration set; each was tested on a few live pages only. The agent mode of the visual hand-off was tested end to end; API
   mode was tested up to the screenshot, since no API key was available.
 - The word lists for the commitment rule were written by hand, by the same author as the rule.
 
@@ -357,7 +363,8 @@ Read these numbers with their limits:
 ## Cost
 
 Jev is billed at $0.042 per million input tokens; output is not billed. A step is 2,000 to 4,500
-input tokens, so about $0.0001. Navigation runs cost $0.0002 to $0.0005; filling an eight-field
+input tokens on a short page and up to about 15,000 on a long one, where the controls above and
+below the viewport are listed too: $0.0001 to $0.0006. Navigation runs cost $0.0002 to $0.0005; filling an eight-field
 form with your values cost $0.0003, because code places the values and Jev is asked only about the
 submit. A look by Claude costs about $0.01 to $0.02, roughly a hundred Jev steps.
 
@@ -434,17 +441,26 @@ Why an extension, and not something simpler:
 
 ## Known limits
 
-- Viewport only: controls below the fold need a scroll step first.
-- One tab; no iframes, no shadow DOM.
-- Controls that share a label (a "delete" button on every row) are told apart by the text of
-  their row. When even the row text is identical, only the first is offered.
-- Dropdowns are handled when they are native `<select>` elements. A custom dropdown (a button that
-  opens a list) works only as a sequence of clicks that Jev has to choose, and `--value` does not
-  reach it.
-- The DevTools loop (`jev_browser_loop.py`) does not see dropdowns or checkboxes and has no visual
-  hand-off; those are in the extension loop only.
-- Text can only come from the goal or `--value`, so the loop cannot compose a message.
-- English and Hebrew wording only in the commitment rule.
+- **Cross-origin iframes are not read.** An iframe from another site (an embedded payment form, a
+  third-party login, a video player) is invisible to the loop. Same-origin iframes and open shadow
+  roots are read. Given what cross-origin frames usually hold, leaving them alone is also the safer
+  default.
+- **Closed shadow roots are not read.** Rare in practice; open ones are.
+- **Reach is three screens.** Controls up to three screens above or four below the viewport are
+  listed; anything further needs a scroll step first. Long pages cost more tokens per step.
+- **Identical rows.** Controls that share a label (a "delete" button on every row) are told apart
+  by the text of their row. When even the row text is identical, only the first is offered.
+- **Custom dropdowns are best effort.** `--value` opens the list and clicks the matching option,
+  tested on one web-component library. The current value of a custom dropdown is not always
+  readable, so the loop may set one that was already set.
+- **One tab per run.** The loop works in the tab it opened; a link that would open a new tab is
+  kept in the same tab.
+- **The DevTools loop is older.** `jev_browser_loop.py` used on its own does not see dropdowns,
+  checkboxes, offscreen controls, shadow roots or iframes, and has no visual hand-off; those are in
+  the extension loop only.
+- **By design: text comes only from the goal or `--value`.** The loop cannot compose a message.
+  That is what keeps a page from making it type text of its own.
+- **The commitment rule knows English and Hebrew wording only.**
 
 ## Credits
 

@@ -292,7 +292,9 @@ VISUAL_AT = 0.7      # needs_visual at or above this: hand the screen to Claude 
 def describe(e: dict) -> str:
     """One control as Jev sees it: role, label, and its state when it has one (never a typed value)."""
     s = f"{e['role']}: {e['text']}"
-    if e.get("choice"):
+    if e.get("popup"):
+        s += f" (opens a list; now: {e.get('value') or 'nothing'})"
+    elif e.get("choice"):
         s += f" (now: {e.get('value') or 'nothing'}; options: {' | '.join(e.get('options', []))})"
     elif "checked" in e:
         s += " (checked)" if e["checked"] else " (not checked)"
@@ -300,6 +302,8 @@ def describe(e: dict) -> str:
         s += " (selected)" if e["selected"] else " (not selected)"
     elif e.get("field"):
         s += " (filled)" if e.get("filled") else " (empty)"
+    if e.get("offscreen"):
+        s += f" [{e['offscreen']} the visible area]"
     return s
 
 
@@ -365,7 +369,9 @@ def decide(client: TypeSafeClient, goal: str, page: dict, history: list[str], ca
                               "Also when a form field needs its value. Not this when `actions_already_taken` shows the field was just filled.")
         kinds["click"] += " Not this when `goal` asks to search and the search box has not been used yet."
     if page["can_scroll_down"]:
-        kinds["scroll_down"] = "No on-screen element helps, and the needed element or information is likely further down the page."
+        kinds["scroll_down"] = ("No listed control helps, and the needed control or information is likely further down the page. "
+                                "Controls marked as above or below the visible area are clickable directly: not this when one "
+                                "of them is what `goal` needs.")
     questions = {
         "kind": Choice(
             instructions="A user is on the web page `page` and wants `goal`. `actions_already_taken` lists the steps so far. "

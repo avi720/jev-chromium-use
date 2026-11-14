@@ -168,7 +168,8 @@ def _norm(s: str) -> str:
 def match_field(els: list[dict], label: str) -> int | None:
     """The field or dropdown whose label is `label` (ignoring '*', ':' and the sample value). Exact first, then contains."""
     want = _norm(label)
-    usable = [(i, _norm(e["text"])) for i, e in enumerate(els) if (e.get("field") and not e["secret"]) or e.get("choice")]
+    usable = [(i, _norm(e["text"])) for i, e in enumerate(els)
+              if (e.get("field") and not e["secret"]) or e.get("choice") or e.get("popup")]
     for i, name in usable:
         if name == want:
             return i
@@ -247,7 +248,22 @@ def run(a: argparse.Namespace) -> None:
                         continue  # not on this screen (yet)
                     target = els[i]
                     print(f"\nstep {step}  {page['url'][:90]}\n  -> your value for {label!r}: {value!r} into {describe(target)[:70]!r}")
-                    if target.get("choice"):
+                    if target.get("popup"):
+                        # A custom dropdown: open it, then click the option with that text in the list it shows.
+                        if _norm(target.get("value") or "") != _norm(value):
+                            bridge.call("click", tabId=tab.id, index=i)
+                            time.sleep(0.8)
+                            listed = tab.perceive(True)["elements"]
+                            options = [k for k, e in enumerate(listed) if e["role"] in ("option", "menuitem", "menuitemradio", "li")]
+                            pick = match_option([listed[k]["text"] for k in options], value)
+                            if pick is None:
+                                outcome = (f"handoff: '{value}' is not in the list '{target['text'][:40]}' opened: "
+                                           f"{[listed[k]['text'][:30] for k in options][:12]}")
+                                break
+                            bridge.call("click", tabId=tab.id, index=options[pick])
+                            print(f"  chose {listed[options[pick]]['text']!r}")
+                        history.append(f"set dropdown '{target['text'][:60]}' to '{value}' on {page['url']}")
+                    elif target.get("choice"):
                         opt = match_option(target["options"], value)
                         if opt is None:
                             outcome = f"handoff: '{value}' is not one of the options of '{target['text'][:40]}': {target['options']}"

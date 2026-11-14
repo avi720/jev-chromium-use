@@ -119,19 +119,41 @@ async function screenshot(tabId, mode = 'auto') {
 
 // ---- functions below run inside the page ----
 
-// What a user could click or type into in the viewport, plus visible text as evidence.
-// What is typed in a field is never read: a field is named by its label only.
+// What a user could act on, plus visible text as evidence. What is typed in a field is never read: a field is
+// named by its label only. Reaches into open shadow roots and same-origin iframes, and lists controls up to
+// three screens above or below the viewport (marked offscreen), after the ones on screen.
 function perceive() {
-  document.querySelectorAll('[data-jev]').forEach(e => e.removeAttribute('data-jev'));
   const vw = innerWidth, vh = innerHeight, seen = new Set(), els = [], cands = [];
   let covered = 0;
   const clean = s => (s || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+  const sel = 'a[href],button,[role=button],[role=link],[role=tab],[role=menuitem],[role=option],input,textarea,select,' +
+              '[role=combobox],[role=searchbox],[role=textbox],[role=checkbox],[role=radio],[role=switch]';
+  // Every root to search: the page, each open shadow root, each same-origin iframe (with its offset on screen).
+  // A cross-origin iframe (a payment form, an embedded login) cannot be read, and is left alone on purpose.
+  const roots = [];
+  const addRoot = (root, dx, dy, depth) => {
+    if (depth > 6) return;
+    roots.push({ root, dx, dy });
+    for (const host of root.querySelectorAll('*')) {
+      if (host.shadowRoot) addRoot(host.shadowRoot, dx, dy, depth + 1);
+      if (host.tagName === 'IFRAME' || host.tagName === 'FRAME') {
+        let doc = null;
+        try { doc = host.contentDocument; } catch { doc = null; }
+        if (doc && doc.body) {
+          const fr = host.getBoundingClientRect();
+          addRoot(doc, dx + fr.left + host.clientLeft, dy + fr.top + host.clientTop, depth + 1);
+        }
+      }
+    }
+  };
+  addRoot(document, 0, 0, 0);
   // The name of a control that is not a button: aria-label, a <label>, or the nearest short text around it.
   // A placeholder is a sample value ("AAPL", "100"), so it is only a fallback or a hint.
   const nameOf = (el) => {
-    const lab = el.id ? document.querySelector('label[for="' + CSS.escape(el.id) + '"]') : null;
+    const r = el.getRootNode();
+    const lab = el.id && r.querySelector ? r.querySelector('label[for="' + CSS.escape(el.id) + '"]') : null;
     const by = el.getAttribute('aria-labelledby');
-    const labelled = by ? by.split(/\s+/).map(id => document.getElementById(id)).filter(Boolean).map(n => n.innerText).join(' ') : '';
+    const labelled = by && r.getElementById ? by.split(/\s+/).map(id => r.getElementById(id)).filter(Boolean).map(n => n.innerText).join(' ') : '';
     let near = '';
     for (let p = el.parentElement, i = 0; p && i < 3 && !near; p = p.parentElement, i++) {
       const t = clean(p.innerText);
@@ -140,63 +162,87 @@ function perceive() {
     return clean(el.getAttribute('aria-label') || labelled || (lab && lab.innerText) ||
                  (el.closest('label') && el.closest('label').innerText) || near);
   };
-  const sel = 'a[href],button,[role=button],[role=link],[role=tab],[role=menuitem],[role=option],input,textarea,select,' +
-              '[role=combobox],[role=searchbox],[role=textbox],[role=checkbox],[role=radio],[role=switch]';
-  for (const el of document.querySelectorAll(sel)) {
-    const tag = el.tagName.toLowerCase(), type = (el.getAttribute('type') || 'text').toLowerCase(), role = el.getAttribute('role');
-    if (tag === 'input' && ['hidden', 'file', 'range', 'color', 'image'].includes(type)) continue;
-    const isToggle = (tag === 'input' && (type === 'checkbox' || type === 'radio')) || ['checkbox', 'radio', 'switch'].includes(role);
-    // A styled checkbox or radio often hides the real input and shows its label: judge visibility on the label.
-    const box = (isToggle && tag === 'input' && el.getBoundingClientRect().width < 4 && (el.closest('label') ||
-                 (el.id && document.querySelector('label[for="' + CSS.escape(el.id) + '"]')))) || el;
-    const r = box.getBoundingClientRect();
-    if (r.width < 4 || r.height < 4 || r.bottom <= 0 || r.top >= vh || r.right <= 0 || r.left >= vw) continue;
-    const cs = getComputedStyle(box);
-    if (cs.visibility === 'hidden' || cs.display === 'none' || (+cs.opacity === 0 && box === el && !isToggle)) continue;
-    const x = Math.min(Math.max(r.left + r.width / 2, 1), vw - 1), y = Math.min(Math.max(r.top + r.height / 2, 1), vh - 1);
-    const top = document.elementFromPoint(x, y);
-    if (top && top !== box && !box.contains(top) && !top.contains(box)) { covered++; continue; }
-    const isButtonInput = tag === 'input' && ['submit', 'button', 'reset'].includes(type);
-    const field = !isToggle && ((tag === 'input' && !isButtonInput) || tag === 'textarea' || ['searchbox', 'textbox'].includes(role));
-    const item = {};
-    let text;
-    if (tag === 'select') {
-      // A dropdown: its options and which one is chosen now are part of the page, like a button's label.
-      text = nameOf(el) || clean(el.getAttribute('name'));
-      item.role = 'select';
-      item.options = [...el.options].map(o => clean(o.text)).slice(0, 60);
-      item.value = el.selectedIndex >= 0 ? clean(el.options[el.selectedIndex].text) : '';
-      item.choice = true;
-    } else if (isToggle) {
-      text = nameOf(el) || clean(el.innerText || el.getAttribute('title') || el.value);
-      item.role = role || type;
-      item.checked = tag === 'input' ? el.checked : el.getAttribute('aria-checked') === 'true';
-    } else if (field) {
-      const name = nameOf(el), ph = el.getAttribute('placeholder');
-      text = clean(name ? (ph && !name.includes(ph) ? name + ' (e.g. ' + ph + ')' : name) : (ph || el.getAttribute('title') || el.getAttribute('name')));
-      item.role = role || 'text field';
-    } else {
-      text = clean(isButtonInput ? el.value : (el.innerText || el.getAttribute('aria-label') || el.getAttribute('title')));
-      item.role = tag === 'a' ? 'link' : (role || tag);
-      // A segmented control (Long | Short) is a row of buttons; which one is on is its state.
-      const pressed = el.getAttribute('aria-pressed') || el.getAttribute('aria-selected') || (el.getAttribute('data-state') === 'active' ? 'true' : null);
-      if (pressed !== null) item.selected = pressed === 'true';
+  for (const { root, dx, dy } of roots) {
+    for (const el of root.querySelectorAll(sel)) {
+      const tag = el.tagName.toLowerCase(), type = (el.getAttribute('type') || 'text').toLowerCase(), role = el.getAttribute('role');
+      if (tag === 'input' && ['hidden', 'file', 'range', 'color', 'image'].includes(type)) continue;
+      const isToggle = (tag === 'input' && (type === 'checkbox' || type === 'radio')) || ['checkbox', 'radio', 'switch'].includes(role);
+      // A styled checkbox or radio often hides the real input and shows its label: judge visibility on the label.
+      const box = (isToggle && tag === 'input' && el.getBoundingClientRect().width < 4 && (el.closest('label') ||
+                   (el.id && el.getRootNode().querySelector('label[for="' + CSS.escape(el.id) + '"]')))) || el;
+      const local = box.getBoundingClientRect();
+      const r = { left: local.left + dx, top: local.top + dy, width: local.width, height: local.height };
+      r.right = r.left + r.width; r.bottom = r.top + r.height;
+      if (r.width < 4 || r.height < 4 || r.right <= 0 || r.left >= vw) continue;
+      const above = r.bottom <= 0, below = r.top >= vh;
+      if (r.bottom < -3 * vh || r.top > 4 * vh) continue; // too far to matter for this step
+      const view = box.ownerDocument.defaultView;
+      const cs = view.getComputedStyle(box);
+      if (cs.visibility === 'hidden' || cs.display === 'none' || (+cs.opacity === 0 && box === el && !isToggle)) continue;
+      if (!box.checkVisibility || !box.checkVisibility()) { if (box.checkVisibility) continue; }
+      if (!above && !below) {
+        // Covered by something else? Ask the element's own root, in its own coordinates.
+        const lx = Math.min(Math.max(local.left + local.width / 2, 1), view.innerWidth - 1);
+        const ly = Math.min(Math.max(local.top + local.height / 2, 1), view.innerHeight - 1);
+        const hitRoot = box.getRootNode();
+        const top = (hitRoot.elementFromPoint ? hitRoot : box.ownerDocument).elementFromPoint(lx, ly);
+        if (top && top !== box && !box.contains(top) && !top.contains(box)) { covered++; continue; }
+      }
+      const isButtonInput = tag === 'input' && ['submit', 'button', 'reset'].includes(type);
+      // A read-only input with role combobox is the face of a custom dropdown, not a place to type.
+      const readonlyCombo = tag === 'input' && role === 'combobox' && el.readOnly;
+      const field = !isToggle && !readonlyCombo && ((tag === 'input' && !isButtonInput) || tag === 'textarea' || ['searchbox', 'textbox'].includes(role));
+      const item = {};
+      let text;
+      if (tag === 'select') {
+        // A dropdown: its options and which one is chosen now are part of the page, like a button's label.
+        text = nameOf(el) || clean(el.getAttribute('name'));
+        item.role = 'select';
+        item.options = [...el.options].map(o => clean(o.text)).slice(0, 60);
+        item.value = el.selectedIndex >= 0 ? clean(el.options[el.selectedIndex].text) : '';
+        item.choice = true;
+      } else if (isToggle) {
+        text = nameOf(el) || clean(el.innerText || el.getAttribute('title') || el.value);
+        item.role = role || type;
+        item.checked = tag === 'input' ? el.checked : el.getAttribute('aria-checked') === 'true';
+      } else if (field) {
+        const name = nameOf(el), ph = el.getAttribute('placeholder');
+        text = clean(name ? (ph && !name.includes(ph) ? name + ' (e.g. ' + ph + ')' : name) : (ph || el.getAttribute('title') || el.getAttribute('name')));
+        item.role = role || 'text field';
+      } else {
+        text = clean(isButtonInput ? el.value : (el.innerText || el.getAttribute('aria-label') || el.getAttribute('title') ||
+                                                 (readonlyCombo ? nameOf(el) || el.getAttribute('placeholder') : '')));
+        item.role = tag === 'a' ? 'link' : (role || tag);
+        // A segmented control (Long | Short) is a row of buttons; which one is on is its state.
+        const pressed = el.getAttribute('aria-pressed') || el.getAttribute('aria-selected') || (el.getAttribute('data-state') === 'active' ? 'true' : null);
+        if (pressed !== null) item.selected = pressed === 'true';
+        // A custom dropdown: a button or combobox that opens a list. Its label is its name; what it shows now
+        // is usually the current choice.
+        const pop = el.getAttribute('aria-haspopup');
+        if ((pop && pop !== 'false' && pop !== 'dialog') || (role === 'combobox' && tag !== 'input') || readonlyCombo) {
+          item.popup = true;
+          const name = nameOf(el) || clean(el.getAttribute('placeholder'));
+          const shown = clean(readonlyCombo ? el.value : el.innerText);
+          if (name && name !== shown) { item.value = shown; text = name; }
+        }
+      }
+      if (!text) continue;
+      item.text = text;
+      item.box = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; // where it is, for recordings
+      if (above || below) item.offscreen = above ? 'above' : 'below';
+      if (field) {
+        const hint = text + ' ' + (el.getAttribute('name') || '') + ' ' + (el.id || ''), ac = el.getAttribute('autocomplete') || '';
+        item.field = true;
+        item.input_type = tag === 'textarea' ? 'textarea' : type;
+        item.filled = (el.value || el.textContent || '').length > 0; // whether it holds something, never what
+        item.secret = type === 'password' || /password|cc-|one-time-code/.test(ac) ||
+          /סיסמ|password|passcode|אשראי|card.?num|cvv|cvc|תעודת זהות|ת\.ז|מספר זהות|ssn/i.test(hint);
+        item.search = type === 'search' || ['searchbox', 'combobox'].includes(role) ||
+          /חיפוש|חפש|search/i.test(hint) || !!el.closest('[role=search]');
+      }
+      cands.push({ item, el });
+      if (cands.length >= 600) break;
     }
-    if (!text) continue;
-    item.text = text;
-    item.box = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; // where it is, for recordings
-    if (field) {
-      const hint = text + ' ' + (el.getAttribute('name') || '') + ' ' + (el.id || ''), ac = el.getAttribute('autocomplete') || '';
-      item.field = true;
-      item.input_type = tag === 'textarea' ? 'textarea' : type;
-      item.filled = (el.value || el.textContent || '').length > 0; // whether it holds something, never what
-      item.secret = type === 'password' || /password|cc-|one-time-code/.test(ac) ||
-        /סיסמ|password|passcode|אשראי|card.?num|cvv|cvc|תעודת זהות|ת\.ז|מספר זהות|ssn/i.test(hint);
-      item.search = type === 'search' || ['searchbox', 'combobox'].includes(role) ||
-        /חיפוש|חפש|search/i.test(hint) || !!el.closest('[role=search]');
-    }
-    cands.push({ item, el });
-    if (cands.length >= 400) break;
   }
   // Controls that share a label (a "delete" button on every row of a table) are told apart by the text of
   // their row. Without it only one of them would be offered, and it would be whichever row came first.
@@ -211,11 +257,25 @@ function perceive() {
     const context = row ? clean(row.innerText.replace(c.item.text, '')).slice(0, 110) : '';
     if (context) c.item.text = c.item.text + ' [row: ' + context + ']';
   }
+  // On screen first, then the rest by distance from the viewport, up to 200 in all.
+  const dist = c => !c.item.offscreen ? 0 : c.item.offscreen === 'below' ? c.item.box[1] - vh : -(c.item.box[1] + c.item.box[3]);
+  cands.sort((a, b) => dist(a) - dist(b));
+  // The elements themselves stay in the extension's own world, so later commands can reach them even inside a
+  // shadow root or an iframe, where a selector from the top document cannot.
+  globalThis.__jev = [];
+  // Each command is injected on its own, so the lookup lives here, next to the list it reads.
+  globalThis.__jevGet = (index) => {
+    const el = globalThis.__jev[index];
+    if (!el || !el.isConnected) throw new Error('element is gone');
+    const rr = el.getBoundingClientRect(), h = el.ownerDocument.defaultView.innerHeight;
+    if (rr.bottom <= 0 || rr.top >= h) el.scrollIntoView({ block: 'center' }); // offscreen: scroll to it, as a user would
+    return el;
+  };
   for (const c of cands) {
     const key = keyOf(c);
     if (seen.has(key)) continue; // still identical: only the first is offered
     seen.add(key);
-    c.el.setAttribute('data-jev', els.length);
+    globalThis.__jev.push(c.el);
     els.push(c.item);
     if (els.length >= 200) break;
   }
@@ -235,6 +295,7 @@ function perceive() {
            can_scroll_down: doc.scrollTop + vh < doc.scrollHeight - 20 };
 }
 
+
 // A consent wall or interstitial covering the page is hidden, never answered: no consent is given.
 function hideOverlays() {
   const vw = innerWidth, vh = innerHeight, hidden = [];
@@ -250,17 +311,25 @@ function hideOverlays() {
 }
 
 function clickElement(index) {
-  const el = document.querySelector('[data-jev="' + index + '"]');
-  if (!el) throw new Error('element is gone');
+  if (!globalThis.__jevGet) throw new Error('read the page first');
+  const el = globalThis.__jevGet(index);
   const link = el.closest('a[target]');
   if (link) link.removeAttribute('target'); // stay in this tab: a new tab would leave the bridge's group
+  // Many custom widgets (dropdowns, menus) open on pointerdown or mousedown, not on click, so send the whole
+  // sequence a real click makes, aimed at the middle of the element.
+  const r = el.getBoundingClientRect(), view = el.ownerDocument.defaultView;
+  const at = { bubbles: true, cancelable: true, composed: true, view, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0 };
+  el.dispatchEvent(new view.PointerEvent('pointerdown', { ...at, pointerType: 'mouse', isPrimary: true }));
+  el.dispatchEvent(new view.MouseEvent('mousedown', at));
+  el.dispatchEvent(new view.PointerEvent('pointerup', { ...at, pointerType: 'mouse', isPrimary: true }));
+  el.dispatchEvent(new view.MouseEvent('mouseup', at));
   el.click();
   return true;
 }
 
 function typeInto(index, text, submit) {
-  const el = document.querySelector('[data-jev="' + index + '"]');
-  if (!el) throw new Error('field is gone');
+  if (!globalThis.__jevGet) throw new Error('read the page first');
+  const el = globalThis.__jevGet(index);
   el.focus();
   const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(proto, 'value');
@@ -280,8 +349,9 @@ function typeInto(index, text, submit) {
 
 // Pick an option of a <select> by its position, the way a user's pick would reach the page.
 function chooseOption(index, option) {
-  const el = document.querySelector('[data-jev="' + index + '"]');
-  if (!el || el.tagName !== 'SELECT') throw new Error('dropdown is gone');
+  if (!globalThis.__jevGet) throw new Error('read the page first');
+  const el = globalThis.__jevGet(index);
+  if (el.tagName !== 'SELECT') throw new Error('not a dropdown');
   if (option < 0 || option >= el.options.length) throw new Error('no such option');
   el.focus();
   const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
