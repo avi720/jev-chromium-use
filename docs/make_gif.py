@@ -15,7 +15,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 W = 960
-BAR_H, LOG_H = 38, 196
+BAR_H, LOG_H = 38, 222
 BG, PANEL, INK, MUTED = (11, 15, 20), (17, 24, 33), (232, 237, 242), (125, 138, 153)
 COLORS = {"type": (56, 189, 248), "click": (45, 212, 191), "choose": (167, 139, 250), "done": (251, 191, 36),
           "look": (167, 139, 250), "scroll": (125, 138, 153), "handoff": (251, 113, 133), "end": (251, 191, 36)}
@@ -24,6 +24,7 @@ MONO = ImageFont.truetype(str(FONTS / "cour.ttf"), 15)
 MONO_B = ImageFont.truetype(str(FONTS / "courbd.ttf"), 15)
 SANS = ImageFont.truetype(str(FONTS / "arial.ttf"), 14)
 SANS_B = ImageFont.truetype(str(FONTS / "arialbd.ttf"), 15)
+GOAL = ImageFont.truetype(str(FONTS / "arialbd.ttf"), 18)
 
 HEB = re.compile(r"[\u0590-\u05FF](?:[\u0590-\u05FF\s'\"\u05F3\u05F4-]*[\u0590-\u05FF])?")
 
@@ -82,8 +83,13 @@ def frame(run: dict, folder: Path, upto: int, highlight: dict | None, footer: st
     d.rectangle([0, top, W, top + LOG_H], fill=BG)
     d.line([0, top, W, top], fill=(40, 52, 66), width=2)
     y = top + 12
-    d.text((16, y), vis(f'> python jev_ext_loop.py {run["url"]} "{run["goal"][:40]}…"'), font=MONO_B, fill=INK)
-    y += 26
+    # The goal in full, on its own line: without it the clicks that follow make no sense.
+    d.text((16, y), f'> python jev_ext_loop.py {run["url"]} "<goal>"', font=MONO_B, fill=INK)
+    y += 22
+    goal = vis(f'"{run["goal"]}"')
+    d.text((W - 16 - d.textlength(goal, font=GOAL), y - 1), goal, font=GOAL, fill=COLORS["done"])
+    d.text((16, y + 1), "goal:", font=MONO, fill=MUTED)
+    y += 30
     for g in run["frames"][: upto + (1 if highlight else 0)]:
         if g["do"] == "end" and g is not highlight:
             continue
