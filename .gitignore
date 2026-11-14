@@ -1,5 +1,5 @@
 # The bridge's shared secret. Generated per machine by `python jev_ext_loop.py --setup`; never commit it.
-jev-edge-extension/token.js
+jev-bridge-extension/token.js
 
 __pycache__/
 *.pyc

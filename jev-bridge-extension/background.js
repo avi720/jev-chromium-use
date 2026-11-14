@@ -184,6 +184,7 @@ function perceive() {
     }
     if (!text) continue;
     item.text = text;
+    item.box = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; // where it is, for recordings
     if (field) {
       const hint = text + ' ' + (el.getAttribute('name') || '') + ' ' + (el.id || ''), ac = el.getAttribute('autocomplete') || '';
       item.field = true;
@@ -230,7 +231,7 @@ function perceive() {
   }
   for (const t of blocks.values()) if (t.length > 2 && !texts.includes(t)) texts.push(t);
   const doc = document.scrollingElement;
-  return { url: location.href, title: document.title, elements: els, page_text: texts, covered,
+  return { url: location.href, title: document.title, elements: els, page_text: texts, covered, viewport: [vw, vh],
            can_scroll_down: doc.scrollTop + vh < doc.scrollHeight - 20 };
 }
 

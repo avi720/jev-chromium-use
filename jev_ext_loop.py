@@ -1,12 +1,12 @@
-"""Jev drives a tab in the everyday, signed-in Edge through the Jev Loop Bridge extension.
+"""Jev drives a tab in your everyday, signed-in Chromium browser (Edge or Chrome) through the Jev Loop Bridge extension.
 
     python jev_ext_loop.py --setup                                   # once: write the token, print install steps
     python jev_ext_loop.py https://www.ynet.co.il "פתח את מדור הכלכלה"
 
-The loop opens a background tab in the Edge window that is already open, inside a tab group
+The loop opens a background tab in the browser window that is already open, inside a tab group
 titled after the goal, and works only in that tab: no window pops up, nothing takes focus, and
-the user's own tabs are never read or touched. If Edge is not running it is started normally,
-so it comes up with the user's own tabs.
+the user's own tabs are never read or touched. If no browser with the extension is running, one
+is started normally, so it comes up with the user's own tabs.
 
 Because the profile is signed in:
 - A control whose label reads like a commitment (buy, pay, send, delete, publish, confirm...)
@@ -34,7 +34,7 @@ import visual
 
 from jev_browser_loop import BROWSERS, MIN_CONF, choose_option, commits, describe, USD_PER_TOKEN, choose_text, decide, plan, text_candidates
 
-EXT_DIR = Path(__file__).parent / "jev-edge-extension"
+EXT_DIR = Path(__file__).parent / "jev-bridge-extension"
 TOKEN_FILE = EXT_DIR / "token.js"
 PORT = 8765
 SHOTS_DIR = Path(tempfile.gettempdir()) / "jev-loop" / "screenshots"
@@ -45,12 +45,12 @@ def setup() -> None:
         TOKEN_FILE.write_text(f'const JEV_TOKEN = "{secrets.token_urlsafe(32)}";\n', encoding="utf-8")
         print("wrote a new token")
     print(f"""
-Install the bridge in your everyday Edge, once:
-  1. Open edge://extensions
-  2. Turn on "Developer mode" (left side)
+Install the bridge in your everyday browser (Edge or Chrome), once:
+  1. Open edge://extensions (Edge) or chrome://extensions (Chrome)
+  2. Turn on "Developer mode"
   3. Click "Load unpacked" and choose this folder:
        {EXT_DIR}
-Keep that folder where it is: Edge loads the extension from it every time.
+Keep that folder where it is: the browser loads the extension from it every time.
 """)
 
 
@@ -63,7 +63,8 @@ def read_token() -> str:
 class Bridge:
     """Runs the local server and waits for the extension to connect to it."""
 
-    def __init__(self) -> None:
+    def __init__(self, browser: str = "auto") -> None:
+        self.browser = browser
         self.token = read_token()
         self._conn: queue.Queue = queue.Queue()
         self._done = threading.Event()
@@ -83,16 +84,20 @@ class Bridge:
         self._done.wait()  # returning would close the connection
 
     def _wait_for_extension(self):
-        edge_running = "msedge.exe" in subprocess.run(["tasklist", "/FI", "IMAGENAME eq msedge.exe"], capture_output=True, text=True).stdout
-        if not edge_running:
-            exe = next(p for p in BROWSERS if "msedge" in p and Path(p).exists())
-            print("Edge is not running: starting it with your own profile and tabs")
-            subprocess.Popen([exe], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        images = {"edge": "msedge.exe", "chrome": "chrome.exe"}
+        wanted = [self.browser] if self.browser != "auto" else ["edge", "chrome"]
+        tasks = subprocess.run(["tasklist"], capture_output=True, text=True).stdout.lower()
+        if not any(images[b] in tasks for b in wanted):
+            installed = [p for b in wanted for p in BROWSERS if images[b] in p.lower() and Path(p).exists()]
+            if not installed:
+                raise SystemExit(f"No {' or '.join(wanted)} found on this machine")
+            print(f"no browser is running: starting {Path(installed[0]).stem} with your own profile and tabs")
+            subprocess.Popen([installed[0]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print("waiting for the Jev Loop Bridge extension to connect (up to 45s)...")
         try:
             return self._conn.get(timeout=45)
         except queue.Empty:
-            raise SystemExit("The extension did not connect. Is it installed and enabled in Edge? "
+            raise SystemExit("The extension did not connect. Is it installed and enabled in your browser? "
                              "See: python jev_ext_loop.py --setup") from None
 
     def call(self, cmd: str, **params):
@@ -182,6 +187,14 @@ def match_option(options: list[str], value: str) -> int | None:
     return hits[0] if len(hits) == 1 else None
 
 
+def record_frame(bridge: "Bridge", tab: "Tab", folder: str, step: int, page: dict, decision: dict) -> dict:
+    """--record: save what the tab shows before the step acts, with the decision, for docs/make_gif.py."""
+    Path(folder).mkdir(parents=True, exist_ok=True)
+    image = Path(folder) / f"step{step:02d}.jpg"
+    image.write_bytes(base64.b64decode(bridge.call("screenshot", tabId=tab.id)["data"]))
+    return {"step": step, "image": image.name, "url": page["url"], "viewport": page.get("viewport"), **decision}
+
+
 def ask_user(prompt: str) -> str | None:
     """Ask in the terminal. None when there is nobody to ask (no terminal, or input is closed)."""
     if not sys.stdin.isatty():
@@ -202,10 +215,11 @@ def run(a: argparse.Namespace) -> None:
         raise SystemExit("--visual api needs Anthropic credentials (ANTHROPIC_API_KEY). Use --visual agent to look yourself.")
     values = dict(v.split("=", 1) for v in a.value)
     candidates = text_candidates(a.goal, values)
-    bridge = Bridge()
+    bridge = Bridge(a.browser)
     history: list[str] = [f"someone looked at the screen earlier and reported: {o}" for o in a.observation]
     applied: set[str] = set()  # labels of --value pairs already placed
     looked: set[str] = set()   # page states Claude has already looked at
+    frames: list[dict] = []    # --record: one screenshot and decision per step
     visual_reports: list[dict] = []
     llm_cost = 0.0
     outcome, tokens = "step limit", 0
@@ -270,6 +284,12 @@ def run(a: argparse.Namespace) -> None:
                 nouls = {k: round(v.noul, 2) for k, v in resp.answers.items() if hasattr(v, "noul")}
                 print(f"\nstep {step}  {page['url'][:90]}\n  {len(els)} elements, decision {ms:.0f}ms, {resp.usage.input_tokens} tokens, {nouls}"
                       f"\n  -> {do}" + (f" {target['role']}: {target['text'][:70]!r}" if target else "") + f"  ({step_plan['why']})")
+                if a.record:
+                    frames.append(record_frame(bridge, tab, a.record, step, page, {
+                        "do": do, "why": step_plan["why"], "ms": round(ms), "tokens": resp.usage.input_tokens,
+                        "target": target and {"role": target["role"], "text": target["text"], "box": target.get("box")},
+                        "confidence": round(resp.answers["element"].confidence, 2) if "element" in resp.answers else None,
+                        "nouls": nouls}))
                 if do == "look":
                     looked.add(page_key)
                     shot = bridge.call("screenshot", tabId=tab.id)["data"]
@@ -338,6 +358,8 @@ def run(a: argparse.Namespace) -> None:
                     ans = tr.answers["text"]
                     text = candidates[int(ans.choice[1:])]
                     print(f"  text: {text!r} (conf {ans.confidence:.2f})")
+                    if a.record:
+                        frames[-1]["text"] = text
                     if not target["search"] and ans.confidence < a.min_conf:
                         outcome = f"handoff: unsure what belongs in '{target['text'][:40]}' (confidence {ans.confidence:.2f})"
                         break
@@ -367,6 +389,13 @@ def run(a: argparse.Namespace) -> None:
                 bridge.call("click", tabId=tab.id, index=step_plan["index"])
                 history.append(action)
                 tab.settle()
+        if a.record:
+            tab.settle(1)
+            frames.append(record_frame(bridge, tab, a.record, len(frames) + 1, tab.perceive(True), {"do": "end", "why": outcome}))
+            (Path(a.record) / "run.json").write_text(json.dumps(
+                {"url": a.url, "goal": a.goal, "outcome": outcome, "tokens": tokens, "usd": tokens * USD_PER_TOKEN,
+                 "frames": frames}, ensure_ascii=False, indent=1), encoding="utf-8")
+            print(f"recording: {a.record}")
         final = bridge.call("status", tabId=tab.id)
         print(f"\noutcome: {outcome}\nfinal page: {final['title']}\n            {final['url']}"
               f"\ncost: Jev {tokens} input tokens = ${tokens * USD_PER_TOKEN:.5f}"
@@ -395,6 +424,10 @@ if __name__ == "__main__":
     ap.add_argument("--allow-commits", action="store_true",
                     help="click commitment-looking controls (save, send, delete...) without asking. Only for a test account")
     ap.add_argument("--show-page", action="store_true", help="print the controls and text of the final page")
+    ap.add_argument("--browser", choices=["auto", "edge", "chrome"], default="auto",
+                    help="which browser to start when none is running (default: Edge if installed, else Chrome). A "
+                         "browser that is already running with the extension is used as it is")
+    ap.add_argument("--record", metavar="FOLDER", help="save a screenshot and the decision of every step, for docs/make_gif.py")
     ap.add_argument("--visual", choices=["auto", "api", "agent", "off"], default="auto",
                     help="who looks when a step needs eyes: 'api' Claude through the Anthropic API, 'agent' hand the "
                          "screenshot to whoever runs the loop, 'auto' (default) the API when credentials exist and the "
@@ -413,7 +446,7 @@ if __name__ == "__main__":
     if args.setup:
         setup()
     elif args.reload_extension:
-        b = Bridge()
+        b = Bridge(args.browser)
         try:
             print("extension:", b.call("reload"))
         finally:

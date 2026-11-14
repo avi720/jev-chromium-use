@@ -5,11 +5,12 @@
 <h3 align="center">A small decision model drives your browser, not a frontier LLM</h3>
 
 <p align="center">
-  <b>Your signed-in Edge</b> · <b>a background tab</b> · <b>Hebrew-ready</b> · <b>about $0.0001 a step</b>
+  <b>Your signed-in Chromium browser</b> · <b>a background tab</b> · <b>Hebrew-ready</b> · <b>about $0.0001 a step</b>
 </p>
 
 <p align="center">
-  <img alt="Windows | Edge" src="https://img.shields.io/badge/platform-Windows%20%7C%20Edge-0078D4?logo=microsoftedge&logoColor=white">
+  <img alt="Windows | Chromium: Edge, Chrome" src="https://img.shields.io/badge/browser-Chromium%20(Edge%2C%20Chrome)-0078D4?logo=googlechrome&logoColor=white">
+  <img alt="Windows" src="https://img.shields.io/badge/OS-Windows-0078D4?logo=windows&logoColor=white">
   <img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white">
   <a href="https://docs.typesafe.ai"><img alt="decisions: TypeSafe Jev" src="https://img.shields.io/badge/decisions-TypeSafe%20Jev-8b5cf6"></a>
   <img alt="visual checks: Claude" src="https://img.shields.io/badge/visual%20checks-Claude-d97757">
@@ -30,9 +31,16 @@
 
 You give a goal in plain language (Hebrew works). The loop reads the page's DOM, asks
 [TypeSafe](https://docs.typesafe.ai)'s Jev which control to click or what to type, and acts, in
-**your own signed-in Edge**, in a background tab inside a labeled tab group, without opening a
-window or taking focus. A whole task costs a fraction of a cent; a decision takes about a third of
-a second.
+**your own signed-in Chromium browser** (Edge or Chrome), in a background tab inside a labeled tab
+group, without opening a window or taking focus. A whole task costs a fraction of a cent; a
+decision takes about a third of a second.
+
+<p align="center">
+  <img src="docs/demo.gif" alt="A recorded run on Hebrew Wikipedia: Jev types the search, clicks the link to the theory of relativity, and stops when the goal is met" width="100%">
+  <br>
+  <sub>A real run, recorded with <code>--record</code>: every frame is the loop's tab before the step, with the
+  control Jev chose outlined. Content from Hebrew Wikipedia (CC BY-SA 4.0).</sub>
+</p>
 
 ```text
 > python jev_ext_loop.py https://www.ynet.co.il "חפש באתר כתבות על רפאל"
@@ -51,12 +59,13 @@ cost: Jev 9363 input tokens = $0.00039
 <div dir="rtl">
 
 **בעברית, בקצרה:** סוכן דפדפן שבו מודל החלטות קטן וזול (Jev של TypeSafe) בוחר כל צעד במקום
-מודל שפה גדול. הוא עובד בתוך ה-Edge שלך עם החשבונות המחוברים, בכרטיסיית רקע, ומבין אתרים
+מודל שפה גדול. הוא עובד בתוך הדפדפן שלך (Edge או Chrome) עם החשבונות המחוברים, בכרטיסיית רקע, ומבין אתרים
 בעברית. כשצריך להסתכל על המסך, הוא מעביר צילום ל-Claude או לסוכן שמריץ אותו.
 
 </div>
 
-> **Status: prototype.** Built and tested on Windows 11 (ARM64) with Edge 157. It has been
+> **Status: prototype.** Built and tested on Windows 11 (ARM64) with Microsoft Edge 157; Chrome
+> uses the same extension and code path but has not been tested. It has been
 > calibrated on 153 labeled cases and used for one QA pass on a signed-in web app (navigation,
 > sorting, form entry). That is all the real mileage it has. Read [Risks](#risks) before pointing
 > it at a site where you are logged in.
@@ -70,8 +79,8 @@ pip install -r requirements.txt
 python jev_ext_loop.py --setup        # writes a token, prints the extension install steps
 ```
 
-Load the `jev-edge-extension` folder in `edge://extensions` (Developer mode, then **Load
-unpacked**), set `TYPESAFE_API_KEY`, and run a goal:
+Load the `jev-bridge-extension` folder in `edge://extensions` or `chrome://extensions` (Developer
+mode, then **Load unpacked**), set `TYPESAFE_API_KEY`, and run a goal:
 
 ```bash
 python jev_ext_loop.py https://www.ynet.co.il "פתח את מדור הכלכלה"
@@ -80,7 +89,7 @@ python jev_ext_loop.py https://www.ynet.co.il "פתח את מדור הכלכלה
 ## How it works
 
 ```text
-jev_ext_loop.py  <── WebSocket on 127.0.0.1 ──>  Jev Loop Bridge (Edge extension)
+jev_ext_loop.py  <── WebSocket on 127.0.0.1 ──>  Jev Loop Bridge (browser extension)
       │                                                   │
       │  one request per step                             │  acts only in the tab it opened
       ▼                                                   ▼
@@ -138,7 +147,7 @@ the look to someone who can see. There are two ways, chosen with `--visual`:
 | `off` | nobody; the loop never asks for a look | |
 
 Either way the screenshot is taken through the extension's `debugger` permission, so the tab stays
-in the background, even when Edge's window is covered by other windows. Edge shows a "started
+in the background, even when the browser window is covered by other windows. The browser shows a "started
 debugging this browser" bar for the second it takes.
 
 **Agent mode: the loop and the agent take turns.** This is the chain to use if you run the loop
@@ -172,7 +181,9 @@ model, change `MODEL` in `visual.py`.
 
 ## Requirements
 
-- Windows with Microsoft Edge (Chrome should work with small path changes; untested)
+- Windows with a Chromium browser that supports Manifest V3 extensions and tab groups: Microsoft
+  Edge (tested) or Google Chrome (same code path, not tested). `--browser` picks which one the loop
+  starts when none is running.
 - Python 3.12+
 - A TypeSafe API key in the `TYPESAFE_API_KEY` environment variable
 - Optional, for the visual hand-off: an Anthropic API key in `ANTHROPIC_API_KEY`
@@ -187,13 +198,13 @@ pip install -r requirements.txt
 python jev_ext_loop.py --setup
 ```
 
-This writes a random token to `jev-edge-extension/token.js` and prints the steps:
+This writes a random token to `jev-bridge-extension/token.js` and prints the steps:
 
-1. Open `edge://extensions`
+1. Open `edge://extensions` (Edge) or `chrome://extensions` (Chrome)
 2. Turn on **Developer mode**
-3. Click **Load unpacked** and choose the `jev-edge-extension` folder
+3. Click **Load unpacked** and choose the `jev-bridge-extension` folder
 
-Keep the folder where it is: Edge loads the extension from it on every start.
+Keep the folder where it is: the browser loads the extension from it on every start.
 
 ## Usage
 
@@ -210,13 +221,16 @@ python jev_ext_loop.py <url> "<goal>" [options]
 | `--close-tab` | close the tab at the end (default: leave it open in its group) |
 | `--show-page` | print the controls and text of the final page, for a report of what ended up on screen |
 | `--allow-commits` | click commitment-looking controls without asking. Only for a test account |
-| `--reload-extension` | make Edge reload the extension after its files were edited (no url or goal needed) |
+| `--reload-extension` | make the browser reload the extension after its files were edited (no url or goal needed) |
+| `--browser B` | `edge`, `chrome` or `auto` (default): which browser to start when none is running |
+| `--record FOLDER` | save a screenshot and the decision of every step; `docs/make_gif.py` turns it into a GIF |
 | `--hide-overlays` | hide a dialog that covers the page instead of asking you (see below) |
 | `--min-conf X` | element confidence below which the loop hands off (default 0.6) |
 | `--visual MODE` | who looks when a step needs eyes: `auto`, `agent`, `api` or `off` (see above) |
 | `--observation TEXT` | what someone saw on the screen in an earlier run; repeatable |
 
-If Edge is not running, the loop starts it normally, so it opens with your own tabs. The
+If no browser is running, the loop starts one normally (Edge if installed, otherwise Chrome), so it
+opens with your own tabs. The
 extension looks for the loop every 30 seconds, so the first connection can take that long.
 
 ### When the loop stops and hands off
@@ -242,7 +256,7 @@ If you would rather not be interrupted, `--hide-overlays` hides the covering ele
 clicking anything in it. No consent is given, but the heuristic is crude (any fixed element
 covering more than half the viewport) and can hide a legitimate dialog. To make hiding the
 default, or to change the detection, see `Tab.perceive` in `jev_ext_loop.py` and `hideOverlays`
-in `jev-edge-extension/background.js`.
+in `jev-bridge-extension/background.js`.
 
 ## Safety rules
 
@@ -336,7 +350,7 @@ Read these numbers with their limits:
    screenshots of a background tab), limited by its own code to the tabs it opened and gated by
    the token. Malware already running as you can get around that, and could take your browser
    cookies without it.
-5. **Annoyances.** Edge warns about developer-mode extensions. Typing is simulated with DOM
+5. **Annoyances.** The browser warns about developer-mode extensions. Typing is simulated with DOM
    events, and some sites will not react to it. `target="_blank"` links are forced to open in
    the same tab.
 
@@ -401,8 +415,9 @@ What the table says, and what it doesn't:
 
 | path | what |
 |---|---|
-| `jev_ext_loop.py` | **the main loop**: drives your signed-in Edge through the extension |
-| `jev-edge-extension/` | the bridge extension (Manifest V3) |
+| `jev_ext_loop.py` | **the main loop**: drives your signed-in browser through the extension |
+| `jev-bridge-extension/` | the bridge extension (Manifest V3, Edge and Chrome) |
+| `docs/` | the banner and the demo GIF, with the scripts that make them |
 | `visual.py` | the hand-off to Claude when a step needs eyes |
 | `jev_browser_loop.py` | shared decision code (`decide`, `plan`, `commits`, thresholds), and a standalone loop over the DevTools protocol on a separate profile (`--temp-profile`, or a persistent one with `--login`); headless by default |
 | `calibration/` | saved pages, labeled cases, and the scripts behind the numbers above |
@@ -412,7 +427,7 @@ Why an extension, and not something simpler:
 
 - The DevTools loop cannot use your everyday profile: Chromium ignores the remote-debugging port
   on the default profile since version 136.
-- Driving Edge from outside, through the OS accessibility tree (tried with
+- Driving the browser from outside, through the OS accessibility tree (tried with
   [agent-desktop](https://github.com/vercel-labs/agent-desktop)), reads only the active tab of a
   window that is not fully covered, and cannot create a tab group without real mouse input. That
   experiment was removed from the repository.

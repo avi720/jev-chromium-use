@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Jev Loop Bridge",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Lets the local jev_ext_loop.py script open a tab in a labeled tab group and read and act in that tab only.",
   "permissions": ["tabs", "tabGroups", "scripting", "alarms", "storage", "debugger"],
   "host_permissions": ["<all_urls>"],
