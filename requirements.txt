@@ -1,0 +1,4 @@
+typesafe-sdk==0.6.0
+websockets>=13
+websocket-client>=1.9
+anthropic>=2.8

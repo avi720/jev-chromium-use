@@ -1,0 +1,160 @@
+{
+ "url": "https://www.zap.co.il/",
+ "title": "זאפ השוואת מחירים",
+ "elements": [
+  {
+   "role": "link",
+   "text": "חזרה לדף הבית"
+  },
+  {
+   "role": "text field",
+   "text": "אני רוצה לקנות...",
+   "field": true,
+   "secret": false,
+   "search": true
+  },
+  {
+   "role": "link",
+   "text": "כל הקטגוריות"
+  },
+  {
+   "role": "link",
+   "text": "לחץ למעבר לzap store"
+  },
+  {
+   "role": "link",
+   "text": "חשמל ואלקטרוניקה"
+  },
+  {
+   "role": "link",
+   "text": "מחשבים"
+  },
+  {
+   "role": "link",
+   "text": "לבית ולגן"
+  },
+  {
+   "role": "link",
+   "text": "פנאי וספורט"
+  },
+  {
+   "role": "link",
+   "text": "בריאות ויופי"
+  },
+  {
+   "role": "link",
+   "text": "לחץ למעבר לzap אילת"
+  },
+  {
+   "role": "link",
+   "text": "zapChoice"
+  },
+  {
+   "role": "link",
+   "text": "zap cars"
+  },
+  {
+   "role": "link",
+   "text": "לחץ למעבר לwisebuy"
+  },
+  {
+   "role": "link",
+   "text": "לחץ למעבר לקישור https://www.zap.co.il/deals/specialsale?utm_source=home_page&utm_medium=banner&utm_campaign=9.11"
+  },
+  {
+   "role": "link",
+   "text": "סלולר"
+  },
+  {
+   "role": "link",
+   "text": "מקררים"
+  },
+  {
+   "role": "link",
+   "text": "טלויזיות"
+  },
+  {
+   "role": "link",
+   "text": "שואבי אבק"
+  },
+  {
+   "role": "link",
+   "text": "מכונות כביסה"
+  },
+  {
+   "role": "link",
+   "text": "מחשבים ניידים"
+  },
+  {
+   "role": "link",
+   "text": "אוזניות"
+  },
+  {
+   "role": "link",
+   "text": "מזגנים"
+  },
+  {
+   "role": "link",
+   "text": "טאבלטים"
+  },
+  {
+   "role": "link",
+   "text": "לכל המוצרים"
+  },
+  {
+   "role": "link",
+   "text": "שואבי אבק Dreame Roborock Ecovacs לכל המוצרים"
+  },
+  {
+   "role": "link",
+   "text": "בשמים לכל המוצרים"
+  },
+  {
+   "role": "link",
+   "text": "מכשירי סלולר Apple Galaxy Xiaomi לכל המוצרים"
+  }
+ ],
+ "page_text": [
+  "שלום אורח,",
+  "התחבר",
+  "כל הקטגוריות",
+  "חשמל ואלקטרוניקה",
+  "מחשבים",
+  "לבית ולגן",
+  "פנאי וספורט",
+  "בריאות ויופי",
+  "zapChoice",
+  "zap cars",
+  "סלולר",
+  "מקררים",
+  "טלויזיות",
+  "שואבי אבק",
+  "מכונות כביסה",
+  "מחשבים ניידים",
+  "אוזניות",
+  "מזגנים",
+  "טאבלטים",
+  "מצלמות",
+  "מדיחי כלים",
+  "תנורי אפיה",
+  "קונסולות משחק",
+  "כיריים",
+  "מאווררים",
+  "שעונים חכמים",
+  "תיקון סלולריים וטאבלטים",
+  "מסכי מחשב",
+  "מייבשי כביסה",
+  "מכונות קפה",
+  "לכל המוצרים",
+  "Dreame",
+  "Roborock",
+  "Ecovacs",
+  "בשמים",
+  "מכשירי סלולר",
+  "Apple",
+  "Galaxy",
+  "Xiaomi"
+ ],
+ "covered": 0,
+ "can_scroll_down": true
+}
