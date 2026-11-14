@@ -22,9 +22,13 @@ step 3  ...
 cost: Jev 9363 input tokens = $0.00039
 ```
 
-> **בעברית, בקצרה:** סוכן דפדפן שבו מודל החלטות קטן וזול (Jev של TypeSafe) בוחר כל צעד במקום
-> מודל שפה גדול. הוא עובד בתוך ה-Edge שלך עם החשבונות המחוברים, בכרטיסיית רקע, ומבין אתרים
-> בעברית. כשצריך להסתכל על המסך, הוא מעביר צילום ל-Claude או לסוכן שמריץ אותו.
+<div dir="rtl">
+
+**בעברית, בקצרה:** סוכן דפדפן שבו מודל החלטות קטן וזול (Jev של TypeSafe) בוחר כל צעד במקום
+מודל שפה גדול. הוא עובד בתוך ה-Edge שלך עם החשבונות המחוברים, בכרטיסיית רקע, ומבין אתרים
+בעברית. כשצריך להסתכל על המסך, הוא מעביר צילום ל-Claude או לסוכן שמריץ אותו.
+
+</div>
 
 > **Status: prototype.** Built and tested on Windows 11 (ARM64) with Edge 157. It has been
 > calibrated on 153 labeled cases and used for one QA pass on a signed-in web app (navigation,
