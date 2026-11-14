@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from jev_core import commits  # noqa: E402
+from jev_core import commits, jev_client  # noqa: E402
 
 # Labels of controls that commit something: money, an order, a message, a deletion, consent, an account change.
 COMMITS = """
@@ -59,12 +59,12 @@ def check_lists() -> None:
 
 
 def check_real_labels() -> None:
-    from typesafe_sdk import Noul, NoulCriteria, TypeSafeClient
+    from typesafe_sdk import Noul, NoulCriteria
 
     labels = sorted({e["text"] for p in (Path(__file__).parent / "pages").glob("*.json")
                      for e in json.loads(p.read_text(encoding="utf-8"))["elements"] if not e.get("field")})
     scores: dict[str, float] = {}
-    with TypeSafeClient() as client:
+    with jev_client() as client:
         for start in range(0, len(labels), 40):
             batch = {f"L{i}": lab for i, lab in enumerate(labels[start:start + 40])}
             resp = client.system_one(state={"labels": batch}, questions={

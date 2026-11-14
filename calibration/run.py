@@ -14,7 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from typesafe_sdk import TypeSafeClient  # noqa: E402
+
 
 import jev_core as loop  # noqa: E402
 from cases import CASES  # noqa: E402
@@ -26,7 +26,7 @@ PAGES = {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in (HERE / "pag
 
 def collect() -> list[dict]:
     rows = []
-    with TypeSafeClient() as client:
+    with loop.jev_client() as client:
         for page_name, goal, kind, gold in CASES:
             page = PAGES[page_name]
             fields = [e for e in page["elements"] if e.get("field") and not e["secret"]]

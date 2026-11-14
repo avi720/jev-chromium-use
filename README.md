@@ -20,6 +20,7 @@
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
+  <a href="#use-it-from-an-ai-agent">Use it from an AI agent</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#safety-rules">Safety rules</a> ·
   <a href="#calibration">Calibration</a> ·
@@ -131,6 +132,8 @@ same way: Jev picks one of its options.
 `--value "LABEL=TEXT"` is a fact, not a suggestion. Before Jev is asked anything, code finds the
 field or dropdown whose label matches `LABEL` (ignoring `*` and `:`) and puts `TEXT` there, even
 when the field already shows a default, such as today's date or a dropdown on its first option.
+`LABEL` is the page's own label, in the page's language; a label that matches nothing on the first
+page is reported, together with the labels that do exist.
 For a custom dropdown (a button that opens a list) it opens the list and clicks the option with
 that text.
 A control that looks like it submits (see [Safety rules](#safety-rules)) is not clicked while any
@@ -138,17 +141,18 @@ of your values has not been placed. This rule exists because an earlier version 
 which fields to fill: it skipped two dropdowns and two prefilled date fields and submitted a trade
 with the wrong direction and date.
 
-### When a step needs eyes: two ways to look
+### When a step needs eyes
 
 Jev reads controls and text, so it cannot tell whether a chart renders, text overflows its box, or
 colors are readable. When `needs_visual` is high, the loop takes a screenshot of its tab and hands
-the look to someone who can see. There are two ways, chosen with `--visual`:
+the look to someone who can see, chosen with `--visual`:
 
 | `--visual` | who looks | needs |
 |---|---|---|
 | `agent` | whoever runs the loop: a coding agent such as Claude Code, or you | nothing extra |
 | `api` | Claude through the Anthropic API (`claude-opus-5-5`, see `visual.py`) | `ANTHROPIC_API_KEY` and API credits |
 | `auto` (default) | the API when credentials exist, otherwise the agent | |
+| `jev` | Jev itself answers fixed yes/no checks on the screenshot: readable, overlap, cut off, broken media, covered by a dialog | nothing extra; about $0.0002 a look |
 | `off` | nobody; the loop never asks for a look | |
 
 Either way the screenshot is taken through the extension's `debugger` permission, so the tab stays
@@ -162,7 +166,8 @@ looking, inside the subscription you already pay for.
 1. The loop saves the screenshot under `%TEMP%\jev-loop\screenshots\` and stops with
    `handoff to the agent: this step needs eyes. Look at the screenshot: <path>`.
 2. The agent opens the image and writes what it sees, in a sentence or three.
-3. The agent runs the same command again with `--observation "<what it saw>"`. Jev reads the
+3. The agent runs the loop again with the same goal, starting from the page the loop ended on
+   (`final page:` in its output), with `--observation "<what it saw>"`. Jev reads the
    observation as part of the page's state and carries on: done, or the next click.
 
 ```bash
@@ -173,9 +178,8 @@ python jev_ext_loop.py https://example.app "check that the dashboard cards are r
 # -> done
 ```
 
-To have Claude Code follow this without being told each time, add a line like this to your
-`CLAUDE.md`: *"When jev_ext_loop.py stops with 'handoff to the agent', open the screenshot it
-names, describe what you see, and run the same command again with `--observation`."*
+The [agent skill](#use-it-from-an-ai-agent) teaches an agent this exchange, and what to do at
+every other hand-off.
 
 **API mode: one command, no turns.** With `ANTHROPIC_API_KEY` set (or `--visual api`), the loop
 sends the screenshot to Claude itself. Claude returns a summary, a list of visual issues with
@@ -183,6 +187,13 @@ severity, and whether the goal is met; the loop prints them, adds them to its hi
 keeps choosing the actions. Each page state is looked at once. A look costs about $0.01 to $0.02
 (one image plus a short JSON answer at Opus prices), roughly a hundred Jev steps. To use another
 model, change `MODEL` in `visual.py`.
+
+**Jev mode: yes/no checks for the price of a step.** Jev 1.14 reads images, so `--visual jev` asks
+it narrow questions about the screenshot instead of asking for a description. It is cheap and
+coarse. Tried on three screenshots, it caught a promo dialog covering the page (`covered` 0.99) but
+also scored up to 0.6 on `overlap` and 0.5 on `cut_off` for clean pages, so a check only counts as
+an issue at 0.7 (`ISSUE_AT` in `visual.py`). TypeSafe calls its image input "dreamer-ready", not
+production-ready, so this mode is an option and not the default.
 
 ## Requirements
 
@@ -211,6 +222,40 @@ This writes a random token to `jev-bridge-extension/token.js` and prints the ste
 
 Keep the folder where it is: the browser loads the extension from it on every start.
 
+## Use it from an AI agent
+
+The loop is built to be run by a coding agent (Claude Code, or any agent that can run shell
+commands and read images) as much as by hand. The agent writes the goal, runs the loop, and
+handles what the loop cannot: it looks at screenshots when a step needs eyes, asks you before a
+click that buys, sends or deletes, and writes any free text itself.
+
+`skills/jev-browser/SKILL.md` is an [Agent Skill](https://docs.claude.com/en/docs/claude-code/skills)
+that teaches the agent this: when to use the loop and when not to, which flags to pass, and what to
+do at each kind of hand-off. To install it for Claude Code:
+
+```bash
+# 1. Tell the skill where the repository is (a user environment variable on Windows)
+setx JEV_HOME "C:\path\to\jev-chromium-use"
+
+# 2. Copy the skill into your personal skills folder
+mkdir -p ~/.claude/skills && cp -r skills/jev-browser ~/.claude/skills/
+```
+
+Restart Claude Code so it picks up the skill and the variable. Then ask for a task in your
+browser in plain words, for example *"in my browser, open the dashboard and tell me the Profit
+Factor"*; the agent loads the skill when the task fits its description. To share the skill with
+everyone who works in a project instead, copy it into that project's `.claude/skills/` folder.
+
+What the agent does at each outcome:
+
+| the loop ends with | the agent |
+|---|---|
+| `done` | checks the final page against the goal, then reports |
+| `handoff to the agent ... screenshot` | opens the screenshot, describes it, runs again with `--observation` |
+| `... looks like a commitment` | asks you, quoting the button; on your yes runs again with `--approve "<label>"` |
+| low confidence, wrong page, `stall` | rephrases the goal or starts from a better page, or asks you |
+| a cookie dialog, a credential field | tells you; those are yours |
+
 ## Usage
 
 ```bash
@@ -225,19 +270,23 @@ python jev_ext_loop.py <url> "<goal>" [options]
 | `--dry-run` | decide the first step and act on nothing |
 | `--close-tab` | close the tab at the end (default: leave it open in its group) |
 | `--show-page` | print the controls and text of the final page, for a report of what ended up on screen |
-| `--allow-commits` | click commitment-looking controls without asking. Only for a test account |
+| `--screenshot [full]` | save a screenshot of the final page and print its path; `full` stitches the whole page, up to eight screens, also in apps that scroll inside an inner panel |
+| `--text "PHRASE"` | what to type when it is not written word for word in the goal, such as a search query in the site's language; when given, the loop types only these (and `--value`) phrases; repeatable |
+| `--approve LABEL` | click a commitment-looking control whose label contains `LABEL` without asking: the yes you gave for that one control; repeatable |
+| `--allow-commits` | click any commitment-looking control without asking. Only for a test account |
 | `--reload-extension` | make the browser reload the extension after its files were edited (no url or goal needed) |
 | `--perception MODE` | `onscreen` (default), `two-pass` or `full`: how much of the page Jev sees (see [Cost](#cost)) |
 | `--browser B` | `edge`, `chrome` or `auto` (default): which browser to start when none is running |
 | `--record FOLDER` | save a screenshot and the decision of every step; `docs/make_gif.py` turns it into a GIF |
 | `--hide-overlays` | hide a dialog that covers the page instead of asking you (see below) |
 | `--min-conf X` | element confidence below which the loop hands off (default 0.6) |
-| `--visual MODE` | who looks when a step needs eyes: `auto`, `agent`, `api` or `off` (see above) |
+| `--visual MODE` | who looks when a step needs eyes: `auto`, `agent`, `api`, `jev` or `off` (see above) |
 | `--observation TEXT` | what someone saw on the screen in an earlier run; repeatable |
 
 If no browser is running, the loop starts one normally (Edge if installed, otherwise Chrome), so it
-opens with your own tabs. The
-extension looks for the loop every 30 seconds, so the first connection can take that long.
+opens with your own tabs. The extension looks for the loop every 30 seconds, so the first
+connection can take that long. Every run ends with a `summary: {...}` line (outcome, decisions,
+tokens, cost, final URL) for scripts and agents to read.
 
 ### When the loop stops and hands off
 
@@ -273,10 +322,16 @@ These are code, not model judgment:
   submit, delete, cancel, confirm, agree, publish, save, sign up, sign out and so on (English and
   Hebrew) is never clicked without a yes from you, even with `--yes`. The rule is the `COMMIT`
   pattern in `jev_core.py`.
+- **A surer pick for a riskier click.** A commitment-looking click needs Jev's confidence at 0.9
+  or more (`COMMIT_CONF`), against 0.6 for any other click, and this holds even with `--approve`
+  or `--allow-commits`, except that an `--approve` naming that control settles which control is
+  meant. Below it the loop hands off.
 - **No credentials.** Password, card-number, CVV and ID fields are never typed into.
 - **Typing asks first**, unless `--yes`.
-- **Only chosen text is typed.** The loop can type phrases from your goal or your `--value`
-  pairs, nothing else. A page cannot make it type text of its own.
+- **Only chosen text is typed.** The loop can type phrases from your goal, `--text` or `--value`,
+  nothing else. A page cannot make it type text of its own.
+- **One run at a time.** The extension serves one run; a second run stops with a clear message
+  instead of taking over the first one's tab.
 - **Your values before any submit.** A commitment-looking control is not clicked while a
   `--value` you gave has not been placed.
 - **The bridge needs the token.** The extension acts only for a local server that presents the
@@ -285,10 +340,12 @@ These are code, not model judgment:
 ## Calibration
 
 `calibration/` holds the evidence for the thresholds: 17 saved Hebrew pages (news, stores,
-government, health, university, Wikipedia) and 153 goals with known answers.
+government, health, university, Wikipedia) and 153 goals with known answers. The loop pins the Jev
+version it was calibrated on (`JEV_MODEL = "jev-1.14.0"` in `jev_core.py`), so a new Jev release
+cannot change its behavior unnoticed: re-run the calibration before moving to a newer one.
 
 ```bash
-python calibration/collect.py     # save pages (throwaway headless profile)
+python calibration/collect.py     # save pages through the extension (public pages only)
 python calibration/run.py         # ask Jev once per case and print the report
 python calibration/run.py --report
 python calibration/commit_words.py [--jev]
@@ -446,6 +503,7 @@ What the table says, and what it doesn't:
 | `jev-bridge-extension/` | the bridge extension (Manifest V3, Edge and Chrome) |
 | `docs/` | the banner and the demo GIF, with the scripts that make them |
 | `visual.py` | the hand-off to Claude when a step needs eyes |
+| `skills/jev-browser/` | the Agent Skill that teaches a coding agent to use the loop |
 | `jev_core.py` | the decisions: what Jev is asked (`decide`), how answers become a step (`plan`), the thresholds, and the commitment rule (`commits`) |
 | `calibration/` | saved pages, labeled cases, and the scripts behind the numbers above |
 | `jev_hebrew_test.py`, `elements_*.json`, `jev_hebrew_results.json` | the first experiment: the same 21 goals in Hebrew and English against two sites (18/21 in both) |

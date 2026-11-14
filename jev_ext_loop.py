@@ -27,12 +27,11 @@ import threading
 import time
 from pathlib import Path
 
-from typesafe_sdk import TypeSafeClient
 from websockets.sync.server import serve
 
 import visual
 
-from jev_core import BROWSERS, DONE_AT, MIN_CONF, choose_option, commits, describe, USD_PER_TOKEN, choose_text, decide, plan, text_candidates
+from jev_core import BROWSERS, COMMIT_CONF, JEV_MODEL, VISUAL_AT, jev_client, DONE_AT, MIN_CONF, choose_option, commits, describe, USD_PER_TOKEN, choose_text, decide, plan, text_candidates
 
 EXT_DIR = Path(__file__).parent / "jev-bridge-extension"
 TOKEN_FILE = EXT_DIR / "token.js"
@@ -69,7 +68,13 @@ class Bridge:
         self._conn: queue.Queue = queue.Queue()
         self._done = threading.Event()
         self._id = 0
-        self.server = serve(self._handler, "127.0.0.1", PORT, max_size=2**25)  # screenshots are large
+        try:
+            self.server = serve(self._handler, "127.0.0.1", PORT, max_size=2**25)  # screenshots are large
+        except OSError as exc:
+            if getattr(exc, "winerror", None) == 10048 or exc.errno in (48, 98, 10048):
+                raise SystemExit(f"Another run of the loop is using port {PORT}. The extension serves one run at a "
+                                 "time: wait for it to finish, then run again.") from None
+            raise
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.ws = self._wait_for_extension()
 
@@ -196,6 +201,44 @@ def record_frame(bridge: "Bridge", tab: "Tab", folder: str, step: int, page: dic
     return {"step": step, "image": image.name, "url": page["url"], "viewport": page.get("viewport"), **decision}
 
 
+def full_page_screenshot(bridge: "Bridge", tab_id: int, max_shots: int = 8) -> bytes:
+    """Scroll the page's main scroller a screen at a time and stack the new part of each screenshot.
+
+    Works for a page that scrolls as a whole and for a web app whose content scrolls inside one container
+    (there a single "beyond the viewport" capture shows only the first screen). Up to `max_shots` screens.
+    """
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    start = bridge.call("scroll_main", tabId=tab_id, to=None)
+    info = bridge.call("scroll_main", tabId=tab_id, to=0)
+    shots, tops = [], []
+    for _ in range(max_shots):
+        time.sleep(0.5)
+        shots.append(PILImage.open(BytesIO(base64.b64decode(bridge.call("screenshot", tabId=tab_id)["data"]))).convert("RGB"))
+        tops.append(info["top"])
+        if info["top"] >= info["max"] - 1:
+            break
+        info = bridge.call("scroll_main", tabId=tab_id, to=info["top"] + info["view"] * 0.9)
+    bridge.call("scroll_main", tabId=tab_id, to=start["top"])
+    k = shots[0].width / info["vw"]  # image pixels per CSS pixel
+    box_bottom = round((info["box_top"] + info["box_height"]) * k)
+    parts = [shots[0]]
+    for prev, top, shot in zip(tops, tops[1:], shots[1:]):
+        new = round((top - prev) * k)  # how far the content moved: the new rows sit at the bottom of the scroller
+        if new > 0:
+            parts.append(shot.crop((0, max(0, box_bottom - new), shot.width, box_bottom)))
+    out = PILImage.new("RGB", (shots[0].width, sum(p.height for p in parts)))
+    y = 0
+    for part in parts:
+        out.paste(part, (0, y))
+        y += part.height
+    buf = BytesIO()
+    out.save(buf, format="JPEG", quality=75)
+    return buf.getvalue()
+
+
 def ask_user(prompt: str) -> str | None:
     """Ask in the terminal. None when there is nobody to ask (no terminal, or input is closed)."""
     if not sys.stdin.isatty():
@@ -215,7 +258,9 @@ def run(a: argparse.Namespace) -> None:
     if a.visual == "api" and not visual.has_credentials():
         raise SystemExit("--visual api needs Anthropic credentials (ANTHROPIC_API_KEY). Use --visual agent to look yourself.")
     values = dict(v.split("=", 1) for v in a.value)
-    candidates = text_candidates(a.goal, values)
+    # Jev selects what to type, it does not write it: the candidates are --text entries, --value values, and
+    # every phrase of the goal. A query that is none of those cannot be chosen, so pass it with --text.
+    candidates = list(dict.fromkeys([*a.text, *values.values()])) if a.text else text_candidates(a.goal, values)
     bridge = Bridge(a.browser)
     history: list[str] = [f"someone looked at the screen earlier and reported: {o}" for o in a.observation]
     applied: set[str] = set()  # labels of --value pairs already placed
@@ -230,7 +275,7 @@ def run(a: argparse.Namespace) -> None:
         tab = Tab(bridge, a.url, "Jev: " + a.goal[:28])
         print(f"opened a background tab in the group 'Jev: {a.goal[:28]}'")
         tab.settle()
-        with TypeSafeClient() as client:
+        with jev_client() as client:
             for step in range(1, a.steps + 1):
                 last = history[-1] if history else ""
                 page = tab.perceive(a.hide_overlays, own_click_url=last.rsplit(" on ", 1)[-1] if last.startswith("clicked") else None)
@@ -241,6 +286,11 @@ def run(a: argparse.Namespace) -> None:
                 typed = {h for h in history if h.startswith("typed")}
                 # Values the user gave are facts, not judgments: code puts each one in the field with that label,
                 # even a field that already shows a default (a date set to today, a dropdown on Long).
+                if step == 1 and values:
+                    unmatched = [k for k in values if match_field(els, k) is None]
+                    if unmatched:
+                        names = [e["text"].split(" (e.g.")[0] for e in els if e.get("field") or e.get("choice") or e.get("popup")]
+                        print(f"  note: no field on this page is labeled {unmatched}; the fields here are {names[:20]}")
                 placed_one = False
                 for label, value in values.items():
                     if label in applied:
@@ -327,6 +377,11 @@ def run(a: argparse.Namespace) -> None:
                         "target": target and {"role": target["role"], "text": target["text"], "box": target.get("box")},
                         "confidence": round(resp.answers["element"].confidence, 2) if "element" in resp.answers else None,
                         "nouls": nouls}))
+                if (do == "done" and a.visual == "off" and page_key not in looked
+                        and resp.answers["needs_visual"].noul >= VISUAL_AT):
+                    # Nobody looked, so a "done" on a goal about appearance would be a guess.
+                    outcome = "handoff: the goal needs someone to look at the page, and --visual is off"
+                    break
                 if do == "look":
                     looked.add(page_key)
                     shot = bridge.call("screenshot", tabId=tab.id)["data"]
@@ -339,19 +394,24 @@ def run(a: argparse.Namespace) -> None:
                         # again with what it saw in --observation, and Jev carries on from there.
                         outcome = f"handoff to the agent: this step needs eyes. Look at the screenshot: {shot_path}"
                         break
-                    seen = visual.look(a.goal, page, history, shot)
-                    llm_cost += seen["cost_usd"]
+                    if a.visual == "jev":
+                        seen = visual.jev_look(a.goal, page, base64.b64decode(shot), JEV_MODEL)
+                        tokens += seen["tokens"]
+                    else:
+                        seen = visual.look(a.goal, page, history, shot)
+                        llm_cost += seen["cost_usd"]
                     if seen["refused"]:
                         outcome = f"handoff: Claude declined to judge the screenshot ({shot_path})"
                         break
-                    print(f"  Claude ({visual.MODEL}, ${seen['cost_usd']:.4f}): {seen['summary']}")
+                    who = "Jev" if a.visual == "jev" else f"Claude ({visual.MODEL}, ${seen['cost_usd']:.4f})"
+                    print(f"  {who}: {seen['summary']}")
                     for issue in seen["issues"]:
                         print(f"    [{issue['severity']}] {issue['where']}: {issue['what']}")
                     visual_reports.append(seen)
                     issues = "; ".join(f"{i['where']}: {i['what']}" for i in seen["issues"]) or "no visual issues"
                     history.append(f"Claude looked at a screenshot of {page['url']}: {seen['summary']} Issues: {issues}")
                     if seen["goal_met"]:
-                        outcome = "done (judged by Claude from a screenshot)"
+                        outcome = f"done (judged by {'Jev' if a.visual == 'jev' else 'Claude'} from a screenshot)"
                         break
                     continue
                 if do == "done":
@@ -420,7 +480,15 @@ def run(a: argparse.Namespace) -> None:
                     outcome = (f"handoff: '{target['text'][:40]}' would submit, but your values for {missing} were not "
                                "placed: no field with that label was found")
                     break
-                if commits(target["text"]) and not a.allow_commits and not confirm(f"'{target['text'][:80]}' looks like it commits something"):
+                # Thresholds scale with the stakes: a click that commits something needs a surer pick than a
+                # navigation click. An --approve that names this control settles which control is meant.
+                approved = any(x.strip() and x.strip() in target["text"] for x in a.approve)
+                pick_conf = resp.answers["element"].confidence if "element" in resp.answers else 0.0
+                if commits(target["text"]) and pick_conf < COMMIT_CONF and not approved:
+                    outcome = (f"handoff: '{target['text'][:60]}' looks like a commitment and the pick is not sure enough "
+                               f"(confidence {pick_conf:.2f}, needs {COMMIT_CONF}); --approve with its label settles it")
+                    break
+                if commits(target["text"]) and not a.allow_commits and not approved and not confirm(f"'{target['text'][:80]}' looks like it commits something"):
                     outcome = f"handoff: '{target['text'][:60]}' looks like a commitment (buy, send, delete...), yours to click"
                     break
                 bridge.call("click", tabId=tab.id, index=step_plan["index"])
@@ -438,8 +506,17 @@ def run(a: argparse.Namespace) -> None:
               f"\ncost: Jev {tokens} input tokens = ${tokens * USD_PER_TOKEN:.5f}"
               + (f"; Claude ${llm_cost:.4f} for {len(visual_reports)} look(s)" if visual_reports else ""))
         print("summary: " + json.dumps({"outcome": outcome, "decisions": decisions, "second_passes": second_passes,
+                                         "values_not_placed": [k for k in values if k not in applied],
                                          "tokens": tokens, "usd": round(tokens * USD_PER_TOKEN, 6), "final_url": final["url"]},
                                         ensure_ascii=False))
+        if a.screenshot:
+            SHOTS_DIR.mkdir(parents=True, exist_ok=True)
+            shot_path = SHOTS_DIR / f"{time.strftime('%Y%m%d-%H%M%S')}-final{'-full' if a.screenshot == 'full' else ''}.jpg"
+            if a.screenshot == "full":
+                shot_path.write_bytes(full_page_screenshot(bridge, tab.id))
+            else:
+                shot_path.write_bytes(base64.b64decode(bridge.call("screenshot", tabId=tab.id)["data"]))
+            print(f"screenshot of the final page: {shot_path}")
         if a.show_page:
             seen = bridge.call("perceive", tabId=tab.id)
             print("\ncontrols on the final page:\n  " + " | ".join(
@@ -461,9 +538,18 @@ if __name__ == "__main__":
     ap.add_argument("--setup", action="store_true", help="write the token and print the one-time install steps")
     ap.add_argument("--value", action="append", default=[], metavar="LABEL=TEXT", help="a value the loop may type into a form field")
     ap.add_argument("--yes", action="store_true", help="do not ask before typing (commitment-looking clicks still ask)")
+    ap.add_argument("--text", action="append", default=[], metavar="TEXT",
+                    help="a phrase the loop may type where the goal needs it, such as a search query that is not "
+                         "written word for word in the goal. Repeatable")
+    ap.add_argument("--approve", action="append", default=[], metavar="LABEL",
+                    help="click a commitment-looking control whose label contains LABEL without asking (the yes you "
+                         "got from the user for that one control). Repeatable")
     ap.add_argument("--allow-commits", action="store_true",
                     help="click commitment-looking controls (save, send, delete...) without asking. Only for a test account")
     ap.add_argument("--show-page", action="store_true", help="print the controls and text of the final page")
+    ap.add_argument("--screenshot", nargs="?", const="screen", choices=["screen", "full"],
+                    help="save a screenshot of the final page and print its path, for whoever runs the loop to look at: "
+                         "the visible part (default) or 'full' for the whole page, stitched from up to 8 screens")
     ap.add_argument("--perception", choices=["onscreen", "two-pass", "full"], default="onscreen",
                     help="which controls Jev sees: only those on screen, scrolling when needed (default, cheapest); on "
                          "screen first and all of them only when unsure; or always all of them, up to three screens away")
@@ -471,10 +557,11 @@ if __name__ == "__main__":
                     help="which browser to start when none is running (default: Edge if installed, else Chrome). A "
                          "browser that is already running with the extension is used as it is")
     ap.add_argument("--record", metavar="FOLDER", help="save a screenshot and the decision of every step, for docs/make_gif.py")
-    ap.add_argument("--visual", choices=["auto", "api", "agent", "off"], default="auto",
+    ap.add_argument("--visual", choices=["auto", "api", "agent", "jev", "off"], default="auto",
                     help="who looks when a step needs eyes: 'api' Claude through the Anthropic API, 'agent' hand the "
-                         "screenshot to whoever runs the loop, 'auto' (default) the API when credentials exist and the "
-                         "agent otherwise, 'off' never look")
+                         "screenshot to whoever runs the loop, 'jev' Jev answers yes/no checks on the screenshot (cheap, "
+                         "coarse, TypeSafe image input is not production-ready yet), 'auto' (default) the API when "
+                         "credentials exist and the agent otherwise, 'off' never look")
     ap.add_argument("--observation", action="append", default=[], metavar="TEXT",
                     help="what someone saw on the screen in an earlier run; Jev takes it into account. Repeatable")
     ap.add_argument("--close-tab", action="store_true", help="close the tab when the run ends")
@@ -484,7 +571,7 @@ if __name__ == "__main__":
     ap.add_argument("--min-conf", type=float, default=MIN_CONF, help="below this the loop stops and hands the decision back")
     ap.add_argument("--dry-run", action="store_true", help="decide one step, act on nothing")
     ap.add_argument("--reload-extension", action="store_true",
-                    help="make Edge reload the extension from its folder, after its files were edited")
+                    help="make the browser reload the extension from its folder, after its files were edited")
     args = ap.parse_args()
     if args.setup:
         setup()

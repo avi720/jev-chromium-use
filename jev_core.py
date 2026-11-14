@@ -17,6 +17,13 @@ BROWSERS = (  # tried in this order when the loop has to start a browser
     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
 )
 USD_PER_TOKEN = 0.042 / 1_000_000  # Jev input price, docs.typesafe.ai/models (output is not billed)
+# Pinned, so a new Jev release cannot change the loop's behavior unnoticed: the thresholds below were
+# calibrated on this version. Re-run calibration/run.py before moving to a newer one.
+JEV_MODEL = "jev-1.14.0"
+
+
+def jev_client() -> TypeSafeClient:
+    return TypeSafeClient(model=JEV_MODEL)
 
 
 def text_candidates(goal: str, values: dict[str, str]) -> list[str]:
@@ -67,6 +74,7 @@ FITS_AT = 0.5        # fits below this: the goal has nothing to do with this pag
 SEARCH_AT = 0.7      # wants_search at or above this: type the query into a visible search box...
 SEARCH_UNLESS = 0.9  # ...unless a click is at least this confident (a direct link beats searching)
 VISUAL_AT = 0.7      # needs_visual at or above this: hand the screen to Claude (once per page state)
+COMMIT_CONF = 0.9    # a click that commits (buy, send, delete...) needs at least this, even when approved
 
 
 def describe(e: dict) -> str:

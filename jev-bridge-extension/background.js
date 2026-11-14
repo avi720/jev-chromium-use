@@ -84,6 +84,7 @@ async function handle(m) {
   if (m.cmd === 'choose') return inTab(m.tabId, chooseOption, [m.index, m.option]);
   if (m.cmd === 'screenshot') return screenshot(m.tabId, m.mode);
   if (m.cmd === 'scroll') return inTab(m.tabId, () => { scrollBy(0, innerHeight * 0.8); return true; });
+  if (m.cmd === 'scroll_main') return inTab(m.tabId, scrollMain, [m.to ?? null]);
   if (m.cmd === 'close') { await chrome.tabs.remove(m.tabId); return true; }
   throw new Error('unknown command ' + m.cmd);
 }
@@ -359,4 +360,26 @@ function chooseOption(index, option) {
   el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
   return 'chose ' + el.options[el.selectedIndex].text.trim();
+}
+
+// The element that scrolls the page's content: the document, or (in many web apps) one large inner
+// container. With `to` null it only reports; otherwise it scrolls there. Used to screenshot a whole page.
+function scrollMain(to) {
+  const doc = document.scrollingElement;
+  let el = doc;
+  if (doc.scrollHeight <= doc.clientHeight + 20) {
+    let best = null, area = 0;
+    for (const c of document.querySelectorAll('*')) {
+      if (c.scrollHeight <= c.clientHeight + 20) continue;
+      const oy = getComputedStyle(c).overflowY;
+      if (oy !== 'auto' && oy !== 'scroll') continue;
+      const r = c.getBoundingClientRect();
+      if (r.width * r.height > area) { area = r.width * r.height; best = c; }
+    }
+    if (best) el = best;
+  }
+  if (to !== null) el.scrollTop = to;
+  const r = el === doc ? { top: 0, height: innerHeight } : el.getBoundingClientRect();
+  return { top: el.scrollTop, max: el.scrollHeight - el.clientHeight, view: el.clientHeight,
+           box_top: Math.max(0, r.top), box_height: Math.min(r.height, innerHeight - Math.max(0, r.top)), vw: innerWidth };
 }
