@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from jev_browser_loop import commits  # noqa: E402
+from jev_core import commits  # noqa: E402
 
 # Labels of controls that commit something: money, an order, a message, a deletion, consent, an account change.
 COMMITS = """

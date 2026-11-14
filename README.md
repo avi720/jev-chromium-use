@@ -116,7 +116,7 @@ Each step:
    | `wants_search` | Noul | is the goal a search by query |
    | `needs_visual` | Noul | does the goal need someone to look at the screen |
    | `field` | Choice | which field or dropdown to fill next |
-3. **Plan.** Plain code (`plan()` in `jev_browser_loop.py`) turns those answers into one step,
+3. **Plan.** Plain code (`plan()` in `jev_core.py`) turns those answers into one step,
    using fixed thresholds. Same answers, same step.
 4. **Act**, wait for the page, repeat. The loop ends on `done`, on a hand-off, on a repeated
    action, or at the step limit.
@@ -270,7 +270,7 @@ These are code, not model judgment:
 - **Commitment labels always ask.** A control whose label reads like buy, pay, order, send,
   submit, delete, cancel, confirm, agree, publish, save, sign up, sign out and so on (English and
   Hebrew) is never clicked without a yes from you, even with `--yes`. The rule is the `COMMIT`
-  pattern in `jev_browser_loop.py`.
+  pattern in `jev_core.py`.
 - **No credentials.** Password, card-number, CVV and ID fields are never typed into.
 - **Typing asks first**, unless `--yes`.
 - **Only chosen text is typed.** The loop can type phrases from your goal or your `--value`
@@ -426,14 +426,16 @@ What the table says, and what it doesn't:
 | `jev-bridge-extension/` | the bridge extension (Manifest V3, Edge and Chrome) |
 | `docs/` | the banner and the demo GIF, with the scripts that make them |
 | `visual.py` | the hand-off to Claude when a step needs eyes |
-| `jev_browser_loop.py` | shared decision code (`decide`, `plan`, `commits`, thresholds), and a standalone loop over the DevTools protocol on a separate profile (`--temp-profile`, or a persistent one with `--login`); headless by default |
+| `jev_core.py` | the decisions: what Jev is asked (`decide`), how answers become a step (`plan`), the thresholds, and the commitment rule (`commits`) |
 | `calibration/` | saved pages, labeled cases, and the scripts behind the numbers above |
 | `jev_hebrew_test.py`, `elements_*.json`, `jev_hebrew_results.json` | the first experiment: the same 21 goals in Hebrew and English against two sites (18/21 in both) |
 
 Why an extension, and not something simpler:
 
-- The DevTools loop cannot use your everyday profile: Chromium ignores the remote-debugging port
-  on the default profile since version 136.
+- Driving the browser over the DevTools protocol cannot use your everyday profile: Chromium
+  ignores the remote-debugging port on the default profile since version 136. An earlier version
+  of this project had such a loop on a separate profile; it was removed once the extension did
+  everything it did.
 - Driving the browser from outside, through the OS accessibility tree (tried with
   [agent-desktop](https://github.com/vercel-labs/agent-desktop)), reads only the active tab of a
   window that is not fully covered, and cannot create a tab group without real mouse input. That
@@ -455,9 +457,6 @@ Why an extension, and not something simpler:
   readable, so the loop may set one that was already set.
 - **One tab per run.** The loop works in the tab it opened; a link that would open a new tab is
   kept in the same tab.
-- **The DevTools loop is older.** `jev_browser_loop.py` used on its own does not see dropdowns,
-  checkboxes, offscreen controls, shadow roots or iframes, and has no visual hand-off; those are in
-  the extension loop only.
 - **By design: text comes only from the goal or `--value`.** The loop cannot compose a message.
   That is what keeps a page from making it type text of its own.
 - **The commitment rule knows English and Hebrew wording only.**

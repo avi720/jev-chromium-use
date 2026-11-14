@@ -16,7 +16,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from typesafe_sdk import TypeSafeClient  # noqa: E402
 
-import jev_browser_loop as loop  # noqa: E402
+import jev_core as loop  # noqa: E402
 from cases import CASES  # noqa: E402
 
 HERE = Path(__file__).parent

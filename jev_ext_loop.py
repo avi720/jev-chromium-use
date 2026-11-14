@@ -32,7 +32,7 @@ from websockets.sync.server import serve
 
 import visual
 
-from jev_browser_loop import BROWSERS, MIN_CONF, choose_option, commits, describe, USD_PER_TOKEN, choose_text, decide, plan, text_candidates
+from jev_core import BROWSERS, MIN_CONF, choose_option, commits, describe, USD_PER_TOKEN, choose_text, decide, plan, text_candidates
 
 EXT_DIR = Path(__file__).parent / "jev-bridge-extension"
 TOKEN_FILE = EXT_DIR / "token.js"
