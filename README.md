@@ -100,8 +100,9 @@ Each step:
 
 1. **Perceive.** The extension lists what a user could act on, with exact labels from the DOM,
    plus the visible text. No screenshots and no OCR, so right-to-left text and Hebrew arrive
-   intact. Controls on screen come first, then those up to three screens above or below, marked
-   as such; Jev can pick one of those directly and the loop scrolls to it. The list reaches into
+   intact. Jev is shown the controls on screen and scrolls when what it needs is not there.
+   Perception also sees controls up to three screens above or below (`--perception`, see
+   [Cost](#cost)), and the loop scrolls to one when it is picked. The list reaches into
    open shadow roots (web components) and same-origin iframes. Each control comes with its state:
    a dropdown with its options and the one chosen now, a custom dropdown as "opens a list", a
    checkbox or radio as checked or not, a tab or segmented button as selected or not, a text field
@@ -226,6 +227,7 @@ python jev_ext_loop.py <url> "<goal>" [options]
 | `--show-page` | print the controls and text of the final page, for a report of what ended up on screen |
 | `--allow-commits` | click commitment-looking controls without asking. Only for a test account |
 | `--reload-extension` | make the browser reload the extension after its files were edited (no url or goal needed) |
+| `--perception MODE` | `onscreen` (default), `two-pass` or `full`: how much of the page Jev sees (see [Cost](#cost)) |
 | `--browser B` | `edge`, `chrome` or `auto` (default): which browser to start when none is running |
 | `--record FOLDER` | save a screenshot and the decision of every step; `docs/make_gif.py` turns it into a GIF |
 | `--hide-overlays` | hide a dialog that covers the page instead of asking you (see below) |
@@ -363,10 +365,28 @@ Read these numbers with their limits:
 ## Cost
 
 Jev is billed at $0.042 per million input tokens; output is not billed. A step is 2,000 to 4,500
-input tokens on a short page and up to about 15,000 on a long one, where the controls above and
-below the viewport are listed too: $0.0001 to $0.0006. Navigation runs cost $0.0002 to $0.0005; filling an eight-field
+input tokens, about $0.0001. Navigation runs cost $0.0002 to $0.0005; filling an eight-field
 form with your values cost $0.0003, because code places the values and Jev is asked only about the
 submit. A look by Claude costs about $0.01 to $0.02, roughly a hundred Jev steps.
+
+### How much of the page Jev sees
+
+`--perception` picks how many controls go into each decision. The same seven real goals (ynet,
+Hebrew Wikipedia, a web app) were run in each mode:
+
+| `--perception` | what Jev sees | goals reached | decisions | total cost of the 7 runs |
+|---|---|---|---|---|
+| `onscreen` (default) | controls on screen; scrolls when needed | 7 / 7 | 15 | **$0.0042** |
+| `two-pass` | on screen first, everything up to three screens away when unsure | 7 / 7 | 15 | $0.0051 |
+| `full` | everything up to three screens away, every step | 7 / 7 | 15 | $0.0082 |
+
+All three reached every goal with the same number of decisions. The only goal whose target was
+below the fold ("open the opinion section" on ynet) took three decisions in every mode: scrolling
+first cost no extra step, and the second pass made `two-pass` cost two and a half times as much as
+`onscreen` on it. On the other six, `two-pass` never needed a second pass and cost exactly what
+`onscreen` did. So `onscreen` is the default. Seven goals is a small sample: on a page where the
+control sits far down and scrolling takes several steps, `full` may still pay for itself.
+
 
 ### Compared with an LLM that reads screenshots
 
@@ -448,8 +468,9 @@ Why an extension, and not something simpler:
   roots are read. Given what cross-origin frames usually hold, leaving them alone is also the safer
   default.
 - **Closed shadow roots are not read.** Rare in practice; open ones are.
-- **Reach is three screens.** Controls up to three screens above or four below the viewport are
-  listed; anything further needs a scroll step first. Long pages cost more tokens per step.
+- **Jev sees one screen at a time by default.** Controls further down need a scroll step. With
+  `--perception full` it sees up to three screens above and four below, at two to four times the
+  cost, which did not save a step in the runs measured (see [Cost](#cost)).
 - **Identical rows.** Controls that share a label (a "delete" button on every row) are told apart
   by the text of their row. When even the row text is identical, only the first is offered.
 - **Custom dropdowns are best effort.** `--value` opens the list and clicks the matching option,

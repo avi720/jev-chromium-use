@@ -32,7 +32,7 @@ from websockets.sync.server import serve
 
 import visual
 
-from jev_core import BROWSERS, MIN_CONF, choose_option, commits, describe, USD_PER_TOKEN, choose_text, decide, plan, text_candidates
+from jev_core import BROWSERS, DONE_AT, MIN_CONF, choose_option, commits, describe, USD_PER_TOKEN, choose_text, decide, plan, text_candidates
 
 EXT_DIR = Path(__file__).parent / "jev-bridge-extension"
 TOKEN_FILE = EXT_DIR / "token.js"
@@ -223,6 +223,8 @@ def run(a: argparse.Namespace) -> None:
     frames: list[dict] = []    # --record: one screenshot and decision per step
     visual_reports: list[dict] = []
     llm_cost = 0.0
+    second_passes = 0
+    decisions = 0
     outcome, tokens = "step limit", 0
     try:
         tab = Tab(bridge, a.url, "Jev: " + a.goal[:28])
@@ -288,9 +290,28 @@ def run(a: argparse.Namespace) -> None:
                     time.sleep(0.8)
                     continue
                 t0 = time.perf_counter()
-                resp = decide(client, a.goal, page, history, can_type=any(e.get("field") and not e["secret"] for e in els))
-                ms = (time.perf_counter() - t0) * 1000
+                # Perception lists on-screen controls first, so the on-screen ones are a prefix of the list and keep
+                # their indexes. "two-pass" asks about those first and sends the full list only when Jev is unsure
+                # or would scroll; "onscreen" never sends the rest; "full" always does.
+                n_on = sum(1 for e in els if not e.get("offscreen"))
+                full_page = page
+                if a.perception != "full" and n_on < len(els):
+                    page = {**full_page, "elements": els[:n_on]}
+                resp = decide(client, a.goal, page, history, can_type=any(e.get("field") and not e["secret"] for e in page["elements"]))
                 tokens += resp.usage.input_tokens
+                if a.perception == "two-pass" and page is not full_page:
+                    el = resp.answers.get("element")
+                    unsure = el is None or el.confidence < a.min_conf
+                    would_scroll = resp.answers["kind"].probabilities.get("scroll_down", 0.0) >= 0.3
+                    if (unsure or would_scroll) and resp.answers["goal_reached"].noul < DONE_AT:
+                        print(f"  second pass: {'unsure' if unsure else 'would scroll'} on screen, asking with all {len(els)} controls")
+                        page = full_page
+                        resp = decide(client, a.goal, page, history, can_type=any(e.get("field") and not e["secret"] for e in els))
+                        tokens += resp.usage.input_tokens
+                        second_passes += 1
+                ms = (time.perf_counter() - t0) * 1000
+                els = page["elements"]
+                decisions += 1
                 page_key = page["url"] + "|" + "|".join(page["page_text"][:8])  # one look per page state
                 if step == 1 and a.observation:
                     looked.add(page_key)  # the observation you passed is the look at this page
@@ -416,6 +437,9 @@ def run(a: argparse.Namespace) -> None:
         print(f"\noutcome: {outcome}\nfinal page: {final['title']}\n            {final['url']}"
               f"\ncost: Jev {tokens} input tokens = ${tokens * USD_PER_TOKEN:.5f}"
               + (f"; Claude ${llm_cost:.4f} for {len(visual_reports)} look(s)" if visual_reports else ""))
+        print("summary: " + json.dumps({"outcome": outcome, "decisions": decisions, "second_passes": second_passes,
+                                         "tokens": tokens, "usd": round(tokens * USD_PER_TOKEN, 6), "final_url": final["url"]},
+                                        ensure_ascii=False))
         if a.show_page:
             seen = bridge.call("perceive", tabId=tab.id)
             print("\ncontrols on the final page:\n  " + " | ".join(
@@ -440,6 +464,9 @@ if __name__ == "__main__":
     ap.add_argument("--allow-commits", action="store_true",
                     help="click commitment-looking controls (save, send, delete...) without asking. Only for a test account")
     ap.add_argument("--show-page", action="store_true", help="print the controls and text of the final page")
+    ap.add_argument("--perception", choices=["onscreen", "two-pass", "full"], default="onscreen",
+                    help="which controls Jev sees: only those on screen, scrolling when needed (default, cheapest); on "
+                         "screen first and all of them only when unsure; or always all of them, up to three screens away")
     ap.add_argument("--browser", choices=["auto", "edge", "chrome"], default="auto",
                     help="which browser to start when none is running (default: Edge if installed, else Chrome). A "
                          "browser that is already running with the extension is used as it is")
