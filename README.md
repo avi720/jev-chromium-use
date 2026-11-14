@@ -37,7 +37,7 @@ cost: Jev 9363 input tokens = $0.00039
 
 **Contents:** [Quick start](#quick-start) · [How it works](#how-it-works) ·
 [Usage](#usage) · [Safety rules](#safety-rules) · [Calibration](#calibration) · [Risks](#risks) ·
-[Cost](#cost) · [Known limits](#known-limits)
+[Cost](#cost) · [Compared with a screenshot LLM](#compared-with-an-llm-that-reads-screenshots) · [Known limits](#known-limits)
 
 ## Quick start
 
@@ -324,6 +324,56 @@ Jev is billed at $0.042 per million input tokens; output is not billed. A step i
 input tokens, so about $0.0001. Navigation runs cost $0.0002 to $0.0005; filling an eight-field
 form with your values cost $0.0003, because code places the values and Jev is asked only about the
 submit. A look by Claude costs about $0.01 to $0.02, roughly a hundred Jev steps.
+
+### Compared with an LLM that reads screenshots
+
+The usual way to build this is a loop where a large model gets a screenshot at every step and
+answers with the next action. Here is what the same two tasks would cost that way. **The Jev
+column is measured** (the runs above). **The other columns are estimates**: no API key was
+available to measure them, so they come from list prices and the assumptions below the table.
+
+| task | decisions | Jev (measured) | Haiku 5.5 | Sonnet 5.5 | Opus 5.5 |
+|---|---|---|---|---|---|
+| search ynet for articles about Rafael | 3 | **$0.0004** | $0.0015–0.002 (4–6×) | $0.03–0.04 (80–110×) | $0.06–0.09 (160–220×) |
+| fill a 6-field form and submit, Jev choosing every field | 8 | **$0.0019** | $0.004–0.01 (2–5×) | $0.09–0.20 (47–107×) | $0.18–0.40 (95–214×) |
+| one decision | 1 | **~$0.0001** | ~$0.0005 | ~$0.01 | ~$0.02 |
+
+Each range runs from a loop that sends only the latest screenshot to one that keeps every earlier
+screenshot in the conversation, which is how a simple loop is usually written.
+
+Assumptions, per step of the screenshot loop:
+
+- **Screenshot:** about 2,000 input tokens. The QA screenshots were 1428 × 1052 px, and image
+  tokens are roughly width × height / 750.
+- **Fixed prompt:** about 1,500 tokens (system prompt, the tool definition, the goal).
+- **History:** about 150 tokens of text per earlier step.
+- **Output:** about 300 tokens per step (the action, plus thinking, which cannot be turned off on
+  Opus 5.5).
+- **Same number of decisions as Jev.** That is generous to the LLM: a screenshot agent usually
+  needs a click and then a separate type action for each field.
+- **No prompt caching.** Caching the fixed prompt would cut the LLM columns by perhaps a fifth;
+  the screenshots, which change every step, are most of the cost.
+- **Prices:** Anthropic list prices per million tokens, input / output: Opus 5.5 $4 / $20,
+  Sonnet 5.5 $2 / $10, Haiku 5.5 $0.10 / $0.50. Jev: $0.042 per million input tokens, output
+  free.
+
+What the table says, and what it doesn't:
+
+- **Against Opus and Sonnet, Jev is about 50 to 200 times cheaper.** That is the comparison the
+  approach was built for.
+- **Against Haiku 5.5 the gap is small, 2 to 6 times.** Haiku is cheap enough that cost alone is
+  not a strong reason to choose Jev over it. What Jev gives on top is a calibrated probability for
+  every option, which is what the thresholds and hand-offs in this project are built on, and it
+  reads the page's real text instead of pixels. Whether Haiku would pick the right control on
+  these Hebrew pages as often as Jev did was not tested.
+- **Speed:** a Jev decision took 200 to 500 ms here. A screenshot model call usually takes
+  several seconds; [typesafe-computer-use](https://github.com/awlevin/typesafe-computer-use)
+  measured 5.2 s for Claude Opus 5 against 0.13 to 0.38 s for Jev on the same screenshot.
+- **Steps that need eyes cost the same either way.** When `needs_visual` fires, this project
+  also sends a screenshot to Claude (or hands it to the agent running the loop).
+- **The $0.0003 form run is left out on purpose.** There, code placed your `--value` entries and
+  Jev decided only the submit. A screenshot loop could place known values with code too, so that
+  saving belongs to the design, not to Jev.
 
 ## Repository layout
 
