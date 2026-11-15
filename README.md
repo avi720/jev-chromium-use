@@ -540,10 +540,20 @@ What the table says, and what it doesn't:
 
 Why an extension, and not something simpler:
 
-- Driving the browser over the DevTools protocol cannot use your everyday profile: Chromium
-  ignores the remote-debugging port on the default profile since version 136. An earlier version
-  of this project had such a loop on a separate profile; it was removed once the extension did
-  everything it did.
+- Driving the browser over the DevTools protocol had no way into your everyday profile when this
+  project started: Chromium ignores the `--remote-debugging-port` flag on the default profile
+  since version 136. An earlier version of this project had such a loop on a separate profile; it
+  was removed once the extension did everything it did. That has since changed for Chrome, at
+  least: [agent-browser](https://github.com/vercel-labs/agent-browser), Vercel's browser CLI for
+  agents, documents an `--auto-connect` mode that attaches to the Chrome you are running, after
+  you allow remote debugging at `chrome://inspect/#remote-debugging` and approve a prompt (Chrome
+  144 and later). It can also copy your profile into a temporary snapshot (`--profile Default`,
+  with Chrome closed on Windows) or reuse logins saved to a state file. Its docs do not mention
+  Edge. If you use Chrome and want an LLM to choose every step, it is a good option. What this
+  project adds: Edge works and was tested; Jev picks each step for about $0.0001 instead of an LLM
+  reading the page; and no debugging port is left open. agent-browser's own docs warn that a
+  debugging port "exposes full browser control on localhost", while this extension answers only a
+  client that holds its token.
 - Driving the browser from outside, through the OS accessibility tree (tried with
   [agent-desktop](https://github.com/vercel-labs/agent-desktop)), reads only the active tab of a
   window that is not fully covered, and cannot create a tab group without real mouse input. That
