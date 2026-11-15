@@ -1,0 +1,67 @@
+name: Something got stuck or went wrong
+description: A run that handed off, stalled, clicked the wrong thing, or failed to start.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying it. Before you paste anything: the loop's output can show what was on the page,
+        including your name, email or account details on a signed-in site. Remove anything private.
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      options:
+        - Microsoft Edge
+        - Google Chrome
+        - Other Chromium browser (write which below)
+    validations:
+      required: true
+  - type: dropdown
+    id: machine
+    attributes:
+      label: Windows on
+      options:
+        - x64 (Intel / AMD)
+        - ARM64 (Snapdragon / Surface)
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: site
+    attributes:
+      label: Site
+      description: The start URL, or just the site's name if the URL is private.
+      placeholder: https://www.ynet.co.il
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: The command you ran
+      description: Including the goal and the flags.
+      render: bash
+      placeholder: python jev_ext_loop.py https://www.ynet.co.il "חפש באתר כתבות על רפאל" --yes
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: The end of the output
+      description: At least the `outcome:`, `final page:` and `summary:` lines; the step lines before them help too. For a crash, the whole error.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What should have happened instead, in a sentence or two. Hebrew is fine.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Extension version
+      description: Shown on the extension's card in edge://extensions or chrome://extensions.
+      placeholder: 0.9.3

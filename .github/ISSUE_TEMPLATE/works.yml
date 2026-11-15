@@ -1,0 +1,39 @@
+name: It works on my setup
+description: Tell us a browser, machine or site where it ran fine. This is how it gets tested beyond one computer.
+labels: ["works-for-me"]
+body:
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      options:
+        - Microsoft Edge
+        - Google Chrome
+        - Other Chromium browser (write which below)
+    validations:
+      required: true
+  - type: dropdown
+    id: machine
+    attributes:
+      label: Windows on
+      options:
+        - x64 (Intel / AMD)
+        - ARM64 (Snapdragon / Surface)
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: tasks
+    attributes:
+      label: What you ran
+      description: The sites and goals that worked, one per line. Leave out anything private.
+      placeholder: |
+        ynet.co.il — "פתח את מדור הכלכלה"
+        ksp.co.il — "search the site for Bluetooth headphones"
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Something slow, confusing in the setup, or worth adding to the README.
