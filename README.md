@@ -13,7 +13,7 @@
   <img alt="Windows" src="https://img.shields.io/badge/OS-Windows-0078D4?logo=windows&logoColor=white">
   <img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white">
   <a href="https://docs.typesafe.ai"><img alt="decisions: TypeSafe Jev" src="https://img.shields.io/badge/decisions-TypeSafe%20Jev-8b5cf6"></a>
-  <img alt="visual checks: Claude" src="https://img.shields.io/badge/visual%20checks-Claude-d97757">
+  <img alt="visual checks: any vision LLM" src="https://img.shields.io/badge/visual%20checks-any%20vision%20LLM-d97757">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2ea44f"></a>
   <img alt="status: prototype" src="https://img.shields.io/badge/status-prototype-f59e0b">
 </p>
@@ -61,7 +61,7 @@ cost: Jev 9363 input tokens = $0.00039
 
 **בעברית, בקצרה:** סוכן דפדפן שבו מודל החלטות קטן וזול (Jev של TypeSafe) בוחר כל צעד במקום
 מודל שפה גדול. הוא עובד בתוך הדפדפן שלך (Edge או Chrome) עם החשבונות המחוברים, בכרטיסיית רקע, ומבין אתרים
-בעברית. כשצריך להסתכל על המסך, הוא מעביר צילום ל-Claude או לסוכן שמריץ אותו.
+בעברית. כשצריך להסתכל על המסך, הוא מעביר צילום למודל שפה שרואה תמונות: לסוכן שמריץ אותו (Claude Code, Codex וכו') או ל-Claude דרך ה-API.
 
 </div>
 
@@ -149,7 +149,7 @@ the look to someone who can see, chosen with `--visual`:
 
 | `--visual` | who looks | needs |
 |---|---|---|
-| `agent` | whoever runs the loop: a coding agent such as Claude Code, or you | nothing extra |
+| `agent` | whoever runs the loop: a coding agent with a vision-capable LLM (Claude Code, Codex, Gemini CLI, Cursor...), or you | nothing extra |
 | `api` | Claude through the Anthropic API (`claude-opus-5-5`, see `visual.py`) | `ANTHROPIC_API_KEY` and API credits |
 | `auto` (default) | the API when credentials exist, otherwise the agent | |
 | `jev` | Jev itself answers fixed yes/no checks on the screenshot: readable, overlap, cut off, broken media, covered by a dialog | nothing extra; about $0.0002 a look |
@@ -160,7 +160,7 @@ in the background, even when the browser window is covered by other windows. The
 debugging this browser" bar for the second it takes.
 
 **Agent mode: the loop and the agent take turns.** This is the chain to use if you run the loop
-from Claude Code (or a similar agent) and have no API credits: the agent's own model does the
+from a coding agent and have no API credits: the agent's own model, whichever LLM it is, does the
 looking, inside the subscription you already pay for.
 
 1. The loop saves the screenshot under `%TEMP%\jev-loop\screenshots\` and stops with
@@ -224,14 +224,16 @@ Keep the folder where it is: the browser loads the extension from it on every st
 
 ## Use it from an AI agent
 
-The loop is built to be run by a coding agent (Claude Code, or any agent that can run shell
-commands and read images) as much as by hand. The agent writes the goal, runs the loop, and
+The loop is built to be run by an AI coding agent (Claude Code, Codex, Gemini CLI, Cursor, or any
+agent whose LLM can run shell commands and read images) as much as by hand. The agent writes the goal, runs the loop, and
 handles what the loop cannot: it looks at screenshots when a step needs eyes, asks you before a
 click that buys, sends or deletes, and writes any free text itself.
 
-`skills/jev-browser/SKILL.md` is an [Agent Skill](https://docs.claude.com/en/docs/claude-code/skills)
+`skills/jev-browser/SKILL.md` is an [Agent Skill](https://agentskills.io): a plain Markdown file
 that teaches the agent this: when to use the loop and when not to, which flags to pass, and what to
-do at each kind of hand-off. To install it for Claude Code:
+do at each kind of hand-off. Nothing in it is specific to one LLM. Every agent needs `JEV_HOME`,
+the folder where you cloned the repository; then install the skill the way your agent reads
+skills. For Claude Code:
 
 ```bash
 # 1. Tell the skill where the repository is (a user environment variable on Windows)
@@ -246,10 +248,17 @@ browser in plain words, for example *"in my browser, open the dashboard and tell
 Factor"*; the agent loads the skill when the task fits its description. To share the skill with
 everyone who works in a project instead, copy it into that project's `.claude/skills/` folder.
 
+**Other agents.** Agents that support the Agent Skills format read the same folder from their own
+skills directory (for Codex, `~/.agents/skills/`); see your agent's docs for where that is. For an agent that does not, add one line
+to its instructions file (`AGENTS.md` for Codex and most others, `GEMINI.md` for Gemini CLI):
+*"For tasks in my signed-in browser, follow `$JEV_HOME/skills/jev-browser/SKILL.md`."* The agent's
+LLM needs to read images for the visual hand-off; every current coding agent's does.
+
 **Optional: make it the default browser tool.** The agent may have other ways into a browser
-(Claude in Chrome, a built-in browser pane) and picks between them on its own. If you want this
-loop used whenever a task needs your signed-in browser, say so in your global instructions file,
-`~/.claude/CLAUDE.md`:
+(a browser extension of its own, a built-in browser pane) and picks between them on its own. If
+you want this loop used whenever a task needs your signed-in browser, say so in your agent's
+global instructions file (`~/.claude/CLAUDE.md` for Claude Code, `~/.codex/AGENTS.md` for Codex,
+`~/.gemini/GEMINI.md` for Gemini CLI):
 
 ```markdown
 ## Browser tasks
@@ -417,9 +426,10 @@ Read these numbers with their limits:
    can send, delete or buy. The guards above reduce it and do not remove it: the commitment
    rule reads labels, so an icon-only button or an unusual wording gets past it. Use the loop
    for navigation, search and reading; do not give it goals that end in an irreversible action.
-2. **Page content goes to TypeSafe, and screenshots to Anthropic.** Every step sends the URL,
+2. **Page content goes to TypeSafe, and screenshots to an LLM provider.** Every step sends the URL,
    title, up to 60 blocks of visible text and the control labels of the tab to TypeSafe. A step
-   that needs eyes also sends a screenshot of the tab to Anthropic, and a screenshot shows what
+   that needs eyes also sends a screenshot of the tab to the model that looks at it (your agent's
+   LLM provider, or Anthropic in `api` mode), and a screenshot shows what
    is in the fields too. Point it at your inbox or your bank and that is what is sent.
 3. **A hostile page can try to steer it.** Page text is part of what Jev judges, so a page can
    bias which control gets clicked. The damage is bounded: it can only click what is on that
@@ -437,7 +447,7 @@ Read these numbers with their limits:
 Jev is billed at $0.042 per million input tokens; output is not billed. A step is 2,000 to 4,500
 input tokens, about $0.0001. Navigation runs cost $0.0002 to $0.0005; filling an eight-field
 form with your values cost $0.0003, because code places the values and Jev is asked only about the
-submit. A look by Claude costs about $0.01 to $0.02, roughly a hundred Jev steps.
+submit. A look by a large LLM costs about $0.01 to $0.02 (Claude Opus prices), roughly a hundred Jev steps.
 
 ### How much of the page Jev sees
 
@@ -464,6 +474,8 @@ The usual way to build this is a loop where a large model gets a screenshot at e
 answers with the next action. Here is what the same two tasks would cost that way. **The Jev
 column is measured** (the runs above). **The other columns are estimates**: no API key was
 available to measure them, so they come from list prices and the assumptions below the table.
+Claude's models stand in for any screenshot LLM here; GPT or Gemini models of the same tier are
+priced in the same range, so check your own model's price list.
 
 | task | decisions | Jev (measured) | Haiku 5.5 | Sonnet 5.5 | Opus 5.5 |
 |---|---|---|---|---|---|
@@ -503,7 +515,7 @@ What the table says, and what it doesn't:
   several seconds; [typesafe-computer-use](https://github.com/awlevin/typesafe-computer-use)
   measured 5.2 s for Claude Opus 5 against 0.13 to 0.38 s for Jev on the same screenshot.
 - **Steps that need eyes cost the same either way.** When `needs_visual` fires, this project
-  also sends a screenshot to Claude (or hands it to the agent running the loop).
+  also sends a screenshot to an LLM (the agent running the loop, or Claude through the API).
 - **The $0.0003 form run is left out on purpose.** There, code placed your `--value` entries and
   Jev decided only the submit. A screenshot loop could place known values with code too, so that
   saving belongs to the design, not to Jev.
@@ -515,7 +527,7 @@ What the table says, and what it doesn't:
 | `jev_ext_loop.py` | **the main loop**: drives your signed-in browser through the extension |
 | `jev-bridge-extension/` | the bridge extension (Manifest V3, Edge and Chrome) |
 | `docs/` | the banner and the demo GIF, with the scripts that make them |
-| `visual.py` | the hand-off to Claude when a step needs eyes |
+| `visual.py` | the visual hand-off when a step needs eyes: Claude through the API, or Jev's yes/no checks |
 | `skills/jev-browser/` | the Agent Skill that teaches a coding agent to use the loop |
 | `jev_core.py` | the decisions: what Jev is asked (`decide`), how answers become a step (`plan`), the thresholds, and the commitment rule (`commits`) |
 | `calibration/` | saved pages, labeled cases, and the scripts behind the numbers above |

@@ -14,7 +14,7 @@ description: >
 # jev-browser
 
 `jev_ext_loop.py` drives a tab in the user's everyday browser. You give it a start URL and a goal;
-it reads the page, asks Jev for each step, acts, and prints what it did. You run it with Bash,
+it reads the page, asks Jev for each step, acts, and prints what it did. You run it in a shell,
 read the outcome, and decide what happens next. It does not write text of its own and it does not
 see pixels: those parts are yours.
 
@@ -100,7 +100,7 @@ The run ends with `outcome:`, `final page:` and a `summary: {...}` JSON line. Ac
 
 Jev reads text and controls, not pixels. When the goal is about appearance (readable, aligned,
 overlapping, does the chart render), the loop takes a screenshot and stops with
-`handoff to the agent ... <path>`. Open the image with your Read tool and describe what matters
+`handoff to the agent ... <path>`. Open the image with your file or image viewing tool and describe what matters
 for the goal in two or three sentences. Then:
 
 - **The goal was only about how the page looks** (it names no action and no value to find): your
