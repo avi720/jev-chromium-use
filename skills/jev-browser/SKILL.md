@@ -88,7 +88,7 @@ The run ends with `outcome:`, `final page:` and a `summary: {...}` JSON line. Ac
 | `handoff: '<label>' looks like a commitment and the pick is not sure enough` | Jev picked the right-looking button but under 0.9 | If the user already said yes to this action (see "Rules that stay yours"), run again with `--approve "<label>"`: naming the button settles which one is meant. Otherwise ask the user. |
 | `handoff: unsure what belongs in '<field>'` | Jev could not tell which phrase goes in a field | Pass the value with `--value "<field label>=<value>"`, using the label shown, and run again. |
 | `handoff: the goal needs someone to look at the page, and --visual is off` | the goal is about appearance and nobody looked | Run again without `--visual off`, or with `--screenshot`, and look yourself. |
-| `handoff: element confidence ... below 0.6` (with `candidates:`) | Jev was not sure which control | Look at the candidates. If one clearly fits, rephrase the goal more specifically and run again; otherwise ask the user. |
+| `handoff: element confidence ... below 0.6` (with `candidates:`) | Jev was not sure which control | Look at the candidates. If one clearly fits, rephrase the goal more specifically and run again. If none of them is the control the goal names, it may be below the fold: run again with `--perception full`. Otherwise ask the user. |
 | `handoff: the goal does not seem to belong on this page` | wrong page for this goal | Start from a better URL, or tell the user. |
 | `handoff: a dialog covers the page` | a cookie or consent prompt | Tell the user; answering consent is theirs. Run again once they have. |
 | `handoff: typing needs your confirmation` | you left out `--yes` | Add `--yes` if the user asked for the text, and run again. |

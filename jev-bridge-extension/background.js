@@ -55,17 +55,35 @@ async function handle(m) {
   if (m.cmd === 'version') return chrome.runtime.getManifest().version;
   if (m.cmd === 'reload') { setTimeout(() => chrome.runtime.reload(), 200); return 'reloading'; } // pick up edited files
   if (m.cmd === 'open') {
-    let tab;
-    try {
-      tab = await chrome.tabs.create({ url: m.url, active: false });
-    } catch {
-      const win = await chrome.windows.create({ url: m.url, focused: false }); // no browser window was open
-      tab = win.tabs[0];
+    // Some windows cannot hold tab groups (app and popup windows, and some Edge windows such as
+    // workspaces), so try the normal windows, last focused first, until one takes the group.
+    const wins = await chrome.windows.getAll({ windowTypes: ['normal'] });
+    const last = await chrome.windows.getLastFocused({ windowTypes: ['normal'] }).catch(() => null);
+    wins.sort((a, b) => (b.id === last?.id) - (a.id === last?.id));
+    let tab = null, grouped = false;
+    for (const w of wins) {
+      tab = await chrome.tabs.create({ url: m.url, active: false, windowId: w.id });
+      try {
+        const groupId = await chrome.tabs.group({ tabIds: [tab.id] });
+        await chrome.tabGroups.update(groupId, { title: m.title, color: 'purple' });
+        grouped = true;
+        break;
+      } catch {
+        await chrome.tabs.remove(tab.id);
+        tab = null;
+      }
     }
-    const groupId = await chrome.tabs.group({ tabIds: [tab.id] });
-    await chrome.tabGroups.update(groupId, { title: m.title, color: 'purple' });
+    if (!tab) { // no browser window was open, or none takes groups: a new unfocused window
+      const win = await chrome.windows.create({ url: m.url, focused: false });
+      tab = win.tabs[0];
+      try {
+        const groupId = await chrome.tabs.group({ tabIds: [tab.id] });
+        await chrome.tabGroups.update(groupId, { title: m.title, color: 'purple' });
+        grouped = true;
+      } catch { /* the tab still works, only without its labeled group */ }
+    }
     await chrome.storage.session.set({ tabs: [...(await myTabs()), tab.id] });
-    return { tabId: tab.id };
+    return { tabId: tab.id, grouped };
   }
   await requireMine(m.tabId);
   if (m.cmd === 'status') {
@@ -217,6 +235,14 @@ function perceive() {
         // A segmented control (Long | Short) is a row of buttons; which one is on is its state.
         const pressed = el.getAttribute('aria-pressed') || el.getAttribute('aria-selected') || (el.getAttribute('data-state') === 'active' ? 'true' : null);
         if (pressed !== null) item.selected = pressed === 'true';
+        // A toggle switch drawn as a button (GitHub's "On | Off" switches) has no text of its own: its name
+        // comes from aria-labelledby or the setting it sits next to, and its state from aria-pressed.
+        if (el.getAttribute('aria-pressed') !== null && (!text || /^(on|off|פעיל|כבוי)$/i.test(text))) {
+          text = nameOf(el) || text;
+          item.role = 'switch';
+          item.checked = el.getAttribute('aria-pressed') === 'true';
+          delete item.selected;
+        }
         // A custom dropdown: a button or combobox that opens a list. Its label is its name; what it shows now
         // is usually the current choice.
         const pop = el.getAttribute('aria-haspopup');
