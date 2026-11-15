@@ -10,7 +10,7 @@
 
 <p align="center">
   <img alt="Windows | Chromium: Edge, Chrome" src="https://img.shields.io/badge/browser-Chromium%20(Edge%2C%20Chrome)-0078D4?logo=googlechrome&logoColor=white">
-  <img alt="Windows" src="https://img.shields.io/badge/OS-Windows-0078D4?logo=windows&logoColor=white">
+  <img alt="OS: Windows, macOS untested" src="https://img.shields.io/badge/OS-Windows%20(macOS%20untested)-0078D4?logo=windows&logoColor=white">
   <img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white">
   <a href="https://docs.typesafe.ai"><img alt="decisions: TypeSafe Jev" src="https://img.shields.io/badge/decisions-TypeSafe%20Jev-8b5cf6"></a>
   <img alt="visual checks: any vision LLM" src="https://img.shields.io/badge/visual%20checks-any%20vision%20LLM-d97757">
@@ -163,7 +163,7 @@ debugging this browser" bar for the second it takes.
 from a coding agent and have no API credits: the agent's own model, whichever LLM it is, does the
 looking, inside the subscription you already pay for.
 
-1. The loop saves the screenshot under `%TEMP%\jev-loop\screenshots\` and stops with
+1. The loop saves the screenshot under `jev-loop/screenshots/` in the system temp folder and stops with
    `handoff to the agent: this step needs eyes. Look at the screenshot: <path>`.
 2. The agent opens the image and writes what it sees, in a sentence or three.
 3. The agent runs the loop again with the same goal, starting from the page the loop ended on
@@ -197,9 +197,13 @@ production-ready, so this mode is an option and not the default.
 
 ## Requirements
 
-- Windows with a Chromium browser that supports Manifest V3 extensions and tab groups: Microsoft
-  Edge (tested) or Google Chrome (same code path, not tested). `--browser` picks which one the loop
-  starts when none is running.
+- A Chromium browser that supports Manifest V3 extensions and tab groups: Microsoft Edge (tested)
+  or Google Chrome (same code path, not tested). `--browser` picks which one the loop starts when
+  none is running.
+- Windows (tested). macOS should work, since the extension and the loop are the same there, but
+  nobody has run it on a Mac yet; if you do, please
+  [report how it went](https://github.com/avi720/jev-chromium-use/issues/new/choose). On Linux,
+  open the browser yourself before a run.
 - Python 3.12+
 - A TypeSafe API key in the `TYPESAFE_API_KEY` environment variable
 - Optional, for the visual hand-off: an Anthropic API key in `ANTHROPIC_API_KEY`
@@ -236,8 +240,9 @@ the folder where you cloned the repository; then install the skill the way your 
 skills. For Claude Code:
 
 ```bash
-# 1. Tell the skill where the repository is (a user environment variable on Windows)
-setx JEV_HOME "C:\path\to\jev-chromium-use"
+# 1. Tell the skill where the repository is
+setx JEV_HOME "C:\path\to\jev-chromium-use"                            # Windows
+echo 'export JEV_HOME="$HOME/path/to/jev-chromium-use"' >> ~/.zshrc    # macOS
 
 # 2. Copy the skill into your personal skills folder
 mkdir -p ~/.claude/skills && cp -r skills/jev-browser ~/.claude/skills/

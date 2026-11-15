@@ -20,10 +20,13 @@ body:
   - type: dropdown
     id: machine
     attributes:
-      label: Windows on
+      label: Computer
       options:
-        - x64 (Intel / AMD)
-        - ARM64 (Snapdragon / Surface)
+        - Windows on x64 (Intel / AMD)
+        - Windows on ARM64 (Snapdragon / Surface)
+        - Mac with Apple silicon (M1 or later)
+        - Mac with Intel
+        - Linux
         - Not sure
     validations:
       required: true

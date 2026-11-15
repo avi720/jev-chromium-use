@@ -89,8 +89,26 @@ class Bridge:
         self._done.wait()  # returning would close the connection
 
     def _wait_for_extension(self):
-        images = {"edge": "msedge.exe", "chrome": "chrome.exe"}
         wanted = [self.browser] if self.browser != "auto" else ["edge", "chrome"]
+        if sys.platform == "darwin":  # macOS: start the app in the background if it is not running
+            apps = {"edge": "Microsoft Edge", "chrome": "Google Chrome"}
+            if not any(subprocess.run(["pgrep", "-x", apps[b]], capture_output=True).returncode == 0 for b in wanted):
+                for b in wanted:
+                    if subprocess.run(["open", "-g", "-a", apps[b]], capture_output=True).returncode == 0:
+                        print(f"no browser is running: starting {apps[b]} with your own profile and tabs")
+                        break
+        elif sys.platform == "win32":
+            self._start_windows_browser(wanted)
+        # Elsewhere (Linux), open the browser yourself before running the loop.
+        print("waiting for the Jev Loop Bridge extension to connect (up to 45s)...")
+        try:
+            return self._conn.get(timeout=45)
+        except queue.Empty:
+            raise SystemExit("The extension did not connect. Is the browser open, and the extension installed and "
+                             "enabled? See: python jev_ext_loop.py --setup") from None
+
+    def _start_windows_browser(self, wanted):
+        images = {"edge": "msedge.exe", "chrome": "chrome.exe"}
         tasks = subprocess.run(["tasklist"], capture_output=True, text=True).stdout.lower()
         if not any(images[b] in tasks for b in wanted):
             installed = [p for b in wanted for p in BROWSERS if images[b] in p.lower() and Path(p).exists()]
@@ -98,12 +116,6 @@ class Bridge:
                 raise SystemExit(f"No {' or '.join(wanted)} found on this machine")
             print(f"no browser is running: starting {Path(installed[0]).stem} with your own profile and tabs")
             subprocess.Popen([installed[0]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print("waiting for the Jev Loop Bridge extension to connect (up to 45s)...")
-        try:
-            return self._conn.get(timeout=45)
-        except queue.Empty:
-            raise SystemExit("The extension did not connect. Is it installed and enabled in your browser? "
-                             "See: python jev_ext_loop.py --setup") from None
 
     def call(self, cmd: str, **params):
         self._id += 1
