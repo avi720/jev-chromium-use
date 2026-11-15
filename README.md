@@ -246,6 +246,19 @@ browser in plain words, for example *"in my browser, open the dashboard and tell
 Factor"*; the agent loads the skill when the task fits its description. To share the skill with
 everyone who works in a project instead, copy it into that project's `.claude/skills/` folder.
 
+**Optional: make it the default browser tool.** The agent may have other ways into a browser
+(Claude in Chrome, a built-in browser pane) and picks between them on its own. If you want this
+loop used whenever a task needs your signed-in browser, say so in your global instructions file,
+`~/.claude/CLAUDE.md`:
+
+```markdown
+## Browser tasks
+- For any task in my own signed-in browser, use the `jev-browser` skill. Fall back to other
+  browser tools only when it cannot do the step (free text, a page it cannot read) or I ask.
+```
+
+Leave it out if you would rather the agent choose per task.
+
 What the agent does at each outcome:
 
 | the loop ends with | the agent |

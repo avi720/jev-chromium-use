@@ -74,7 +74,7 @@ FITS_AT = 0.5        # fits below this: the goal has nothing to do with this pag
 SEARCH_AT = 0.7      # wants_search at or above this: type the query into a visible search box...
 SEARCH_UNLESS = 0.9  # ...unless a click is at least this confident (a direct link beats searching)
 VISUAL_AT = 0.7      # needs_visual at or above this: hand the screen to Claude (once per page state)
-COMMIT_CONF = 0.9    # a click that commits (buy, send, delete...) needs at least this, even when approved
+COMMIT_CONF = 0.9    # a click that commits (buy, send, delete...) needs at least this, unless an --approve names that control
 
 
 def describe(e: dict) -> str:
